@@ -13,7 +13,7 @@ function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  // Check for existing token on app start
+ 
   useEffect(() => {
     const token = localStorage.getItem('mentormeet_token');
     const userData = localStorage.getItem('mentormeet_user');
@@ -26,7 +26,7 @@ function App() {
   }, []);
 
   const handleLogin = (userData, token) => {
-    // Store token and user data in localStorage
+    
     localStorage.setItem('mentormeet_token', token);
     localStorage.setItem('mentormeet_user', JSON.stringify(userData));
     
@@ -35,7 +35,7 @@ function App() {
   };
 
   const handleLogout = () => {
-    // Clear localStorage on logout
+   
     localStorage.removeItem('mentormeet_token');
     localStorage.removeItem('mentormeet_user');
     

@@ -31,7 +31,7 @@ const Signup = ({ onLogin }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    // Basic validation
+  
     if (formData.password !== formData.confirmPassword) {
       setError('Passwords do not match');
       return;
@@ -46,7 +46,7 @@ const Signup = ({ onLogin }) => {
     setError('');
 
     try {
-      // Prepare data for API based on role
+      
       const signupData = {
         firstName: formData.firstName,
         lastName: formData.lastName,
@@ -56,7 +56,6 @@ const Signup = ({ onLogin }) => {
         role: formData.role
       };
 
-      // Add role-specific fields
       if (formData.role === 'tutor') {
         signupData.qualifications = formData.qualifications;
         signupData.subjects = formData.subjects;
@@ -65,12 +64,11 @@ const Signup = ({ onLogin }) => {
         signupData.address = formData.address;
       }
 
-      // Replace with your actual backend endpoint
       const response = await axios.post('http://localhost:5000/api/auth/signup', signupData);
 
       const { token, user } = response.data;
       
-      // Auto-login after successful signup
+      
       onLogin(user, token);
       
     } catch (err) {
@@ -153,7 +151,7 @@ const Signup = ({ onLogin }) => {
       <div className="auth-card">
         <div className="auth-header">
           <h1>MentorMeet</h1>
-          <p>Create your account to join our verified tutoring platform</p>
+          <p>Create Your Account </p>
         </div>
 
         {error && (

@@ -17,7 +17,7 @@ const Login = ({ onLogin }) => {
       ...formData,
       [e.target.name]: e.target.value
     });
-    // Clear error when user starts typing
+    
     if (error) setError('');
   };
 
@@ -27,7 +27,7 @@ const Login = ({ onLogin }) => {
     setError('');
 
     try {
-      // Replace with your actual backend endpoint
+      
       const response = await axios.post('http://localhost:5000/api/auth/login', {
         email: formData.email,
         password: formData.password,
@@ -36,7 +36,7 @@ const Login = ({ onLogin }) => {
 
       const { token, user } = response.data;
       
-      // Call parent handler with user data and token
+     
       onLogin(user, token);
       
     } catch (err) {
