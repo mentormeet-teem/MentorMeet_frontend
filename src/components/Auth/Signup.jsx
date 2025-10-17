@@ -64,7 +64,7 @@ const Signup = ({ onLogin }) => {
         signupData.address = formData.address;
       }
 
-      const response = await axios.post('http://localhost:5000/api/auth/signup', signupData);
+      const response = await axios.post('http://localhost:5010/api/auth/signup', signupData);
 
       const { token, user } = response.data;
       

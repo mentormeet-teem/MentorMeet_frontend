@@ -6,8 +6,7 @@ import '../../styles/Auth.css';
 const Login = ({ onLogin }) => {
   const [formData, setFormData] = useState({
     email: '',
-    password: '',
-    role: 'tutor'
+    password: ''
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -27,16 +26,12 @@ const Login = ({ onLogin }) => {
     setError('');
 
     try {
-      
-      const response = await axios.post('http://localhost:5000/api/auth/login', {
+      const response = await axios.post('http://localhost:5010/api/auth/login', {
         email: formData.email,
-        password: formData.password,
-        role: formData.role
+        password: formData.password
       });
 
       const { token, user } = response.data;
-      
-     
       onLogin(user, token);
       
     } catch (err) {
@@ -90,21 +85,6 @@ const Login = ({ onLogin }) => {
               required
               disabled={loading}
             />
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="role">I am a</label>
-            <select
-              id="role"
-              name="role"
-              value={formData.role}
-              onChange={handleChange}
-              disabled={loading}
-            >
-              <option value="tutor">Tutor</option>
-              <option value="institution">Institution</option>
-              <option value="admin">Administrator</option>
-            </select>
           </div>
 
           <button 

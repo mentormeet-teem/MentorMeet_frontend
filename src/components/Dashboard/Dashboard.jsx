@@ -13,7 +13,7 @@ const Dashboard = ({ user, onLogout }) => {
       try {
         setLoading(true);
         const token = localStorage.getItem('mentormeet_token');
-        const response = await axios.get(`http://localhost:5000/api/dashboard/${user.role}`, {
+        const response = await axios.get(`http://localhost:5010/api/dashboard/${user.role}`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         setDashboardData(response.data);

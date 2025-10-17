@@ -26,7 +26,7 @@ function App() {
   }, []);
 
   const handleLogin = (userData, token) => {
-    
+  
     localStorage.setItem('mentormeet_token', token);
     localStorage.setItem('mentormeet_user', JSON.stringify(userData));
     
@@ -35,7 +35,7 @@ function App() {
   };
 
   const handleLogout = () => {
-   
+    // Clear localStorage on logout
     localStorage.removeItem('mentormeet_token');
     localStorage.removeItem('mentormeet_user');
     
