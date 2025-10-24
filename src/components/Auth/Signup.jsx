@@ -5,7 +5,6 @@ import '../../styles/Auth.css';
 
 const Signup = ({ onLogin }) => {
   const [formData, setFormData] = useState({
-    // Base user fields
     firstName: '',
     lastName: '',
     email: '',
@@ -14,16 +13,14 @@ const Signup = ({ onLogin }) => {
     dateOfBirth: '',
     gender: '',
     role: 'tutor',
-    
     // Tutor specific
-    qualifications: '',
-    subjects: '',
     experience: '',
-    certifications: '',
     hourlyRate: '',
-    idNumber: '',
     idType: '',
-    
+    // Files
+    cvFile: null,
+    certificateFile: null,
+    idFile: null,
     // Institution specific
     institutionName: '',
     institutionType: '',
@@ -38,17 +35,23 @@ const Signup = ({ onLogin }) => {
   const [error, setError] = useState('');
 
   const handleChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value
-    });
+    if (e.target.type === 'file') {
+      setFormData({
+        ...formData,
+        [e.target.name]: e.target.files[0]
+      });
+    } else {
+      setFormData({
+        ...formData,
+        [e.target.name]: e.target.value
+      });
+    }
     if (error) setError('');
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    // Basic validation
     if (formData.password !== formData.confirmPassword) {
       setError('Passwords do not match');
       return;
@@ -59,75 +62,105 @@ const Signup = ({ onLogin }) => {
       return;
     }
 
+    // File validation for tutors
+    if (formData.role === 'tutor') {
+      if (!formData.cvFile) {
+        setError('Please upload your CV');
+        return;
+      }
+      if (!formData.idFile) {
+        setError('Please upload your ID document');
+        return;
+      }
+    }
+
     setLoading(true);
     setError('');
 
     try {
-      // Prepare base user data
-      const baseUserData = {
-        firstName: formData.firstName,
-        lastName: formData.lastName,
-        email: formData.email,
-        password: formData.password,
-        confirmPassword: formData.confirmPassword,
-        dateOfBirth: formData.dateOfBirth,
-        gender: formData.gender
-      };
-
       let endpoint = '';
       let requestData = {};
 
       if (formData.role === 'tutor') {
         endpoint = 'http://localhost:5010/api/auth/web/register/tutor';
         requestData = {
-          ...baseUserData,
-          qualifications: formData.qualifications,
-          subjects: formData.subjects,
-          experience: formData.experience,
-          certifications: formData.certifications || '', // Handle optional field
-          hourlyRate: parseFloat(formData.hourlyRate) || 0,
-          idNumber: formData.idNumber,
-          idType: formData.idType
+          firstName: formData.firstName.trim(),
+          lastName: formData.lastName.trim(),
+          email: formData.email.trim(),
+          password: formData.password,
+          dateOfBirth: formData.dateOfBirth || '2000-01-01',
+          gender: formData.gender || 'Other',
+          qualifications: "See uploaded CV", // Combined into CV
+          subjects: "See uploaded CV", // Combined into CV
+          experience: formData.experience ? parseInt(formData.experience) : 1,
+          certifications: formData.certificateFile ? "See uploaded certificates" : "None",
+          hourlyRate: formData.hourlyRate ? parseFloat(formData.hourlyRate) : 500,
+          idNumber: "See uploaded ID", // From uploaded file
+          idType: formData.idType || "National ID"
         };
+
+        // Create FormData for file upload
+        const formDataToSend = new FormData();
+        Object.keys(requestData).forEach(key => {
+          formDataToSend.append(key, requestData[key]);
+        });
+        
+        // Append files
+        formDataToSend.append('cvFile', formData.cvFile);
+        if (formData.certificateFile) {
+          formDataToSend.append('certificateFile', formData.certificateFile);
+        }
+        formDataToSend.append('idFile', formData.idFile);
+
+        const response = await axios.post(endpoint, formDataToSend, {
+          headers: {
+            'Content-Type': 'multipart/form-data'
+          }
+        });
+        
+        alert(response.data.message || 'Tutor registration submitted! Please wait for admin verification.');
+        window.location.href = '/login';
+
       } else if (formData.role === 'institution') {
         endpoint = 'http://localhost:5010/api/auth/web/register/institution';
         requestData = {
-          ...baseUserData,
+          firstName: formData.firstName.trim(),
+          lastName: formData.lastName.trim(),
+          email: formData.email.trim(),
+          password: formData.password,
+          dateOfBirth: formData.dateOfBirth || '2000-01-01',
+          gender: formData.gender || 'Other',
           institutionName: formData.institutionName,
-          institutionType: formData.institutionType,
+          institutionType: formData.institutionType || 'School',
           address: formData.address,
-          contactPerson: formData.contactPerson,
-          contactPersonPosition: formData.contactPersonPosition,
-          website: formData.website || '', // Handle optional field
-          businessRegistrationNumber: formData.businessRegistrationNumber
+          contactPerson: formData.contactPerson || `${formData.firstName} ${formData.lastName}`,
+          contactPersonPosition: formData.contactPersonPosition || 'Manager',
+          website: formData.website || '',
+          businessRegistrationNumber: formData.businessRegistrationNumber || '123456789'
         };
-      }
 
-      const response = await axios.post(endpoint, requestData);
-      
-      // Handle different responses based on role
-      if (formData.role === 'tutor') {
-        // Tutors get verification message, not auto-login
-        alert(response.data.message); // "Tutor registration submitted successfully. Please wait for admin verification."
-        // Redirect to login
-        window.location.href = '/login';
-      } else {
-        // Institutions get token and auto-login
+        const response = await axios.post(endpoint, requestData);
         const { token, user } = response.data;
-        
-        // Convert her format to our format
         const adaptedUser = {
           id: user.id,
           name: `${user.firstName} ${user.lastName}`,
           email: user.email,
           role: user.role.toLowerCase()
         };
-        
         onLogin(adaptedUser, token);
       }
       
     } catch (err) {
-      setError(err.response?.data?.message || 'Registration failed. Please try again.');
+      console.log('Full error:', err);
+      console.log('Error response:', err.response?.data);
+      
+      if (err.response?.data?.message) {
+        setError(err.response.data.message);
+      } else if (err.response?.data) {
+        setError('Registration error: ' + JSON.stringify(err.response.data));
+      } else {
+        setError('Registration failed. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -136,58 +169,22 @@ const Signup = ({ onLogin }) => {
   const renderTutorFields = () => (
     <>
       <div className="form-group">
-        <label htmlFor="qualifications">Qualifications *</label>
-        <input
-          type="text"
-          id="qualifications"
-          name="qualifications"
-          value={formData.qualifications}
-          onChange={handleChange}
-          placeholder="e.g., BSc in Mathematics, Teaching Certificate"
-          required
-          disabled={loading}
-        />
-      </div>
-
-      <div className="form-group">
-        <label htmlFor="subjects">Subjects *</label>
-        <input
-          type="text"
-          id="subjects"
-          name="subjects"
-          value={formData.subjects}
-          onChange={handleChange}
-          placeholder="e.g., Mathematics, Physics, Chemistry"
-          required
-          disabled={loading}
-        />
-      </div>
-
-      <div className="form-group">
-        <label htmlFor="experience">Experience *</label>
-        <input
-          type="text"
+        <label htmlFor="experience">Years of Experience *</label>
+        <select
           id="experience"
           name="experience"
           value={formData.experience}
           onChange={handleChange}
-          placeholder="e.g., 5 years teaching experience"
           required
           disabled={loading}
-        />
-      </div>
-
-      <div className="form-group">
-        <label htmlFor="certifications">Certifications</label>
-        <input
-          type="text"
-          id="certifications"
-          name="certifications"
-          value={formData.certifications}
-          onChange={handleChange}
-          placeholder="e.g., TEFL Certified, Teaching License"
-          disabled={loading}
-        />
+        >
+          <option value="">Select Experience</option>
+          <option value="0">No experience (Just starting)</option>
+          <option value="1">1-2 years</option>
+          <option value="3">3-5 years</option>
+          <option value="6">6-10 years</option>
+          <option value="11">10+ years</option>
+        </select>
       </div>
 
       <div className="form-group">
@@ -205,6 +202,33 @@ const Signup = ({ onLogin }) => {
           required
           disabled={loading}
         />
+      </div>
+
+      <div className="form-group">
+        <label htmlFor="cvFile">CV/Resume *</label>
+        <input
+          type="file"
+          id="cvFile"
+          name="cvFile"
+          onChange={handleChange}
+          accept=".pdf,.doc,.docx"
+          required
+          disabled={loading}
+        />
+        <small>Upload your CV (PDF, DOC, DOCX) - includes qualifications and subjects</small>
+      </div>
+
+      <div className="form-group">
+        <label htmlFor="certificateFile">Certifications (Optional)</label>
+        <input
+          type="file"
+          id="certificateFile"
+          name="certificateFile"
+          onChange={handleChange}
+          accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+          disabled={loading}
+        />
+        <small>Upload teaching certificates or qualifications</small>
       </div>
 
       <div className="form-group">
@@ -226,17 +250,17 @@ const Signup = ({ onLogin }) => {
       </div>
 
       <div className="form-group">
-        <label htmlFor="idNumber">ID Number *</label>
+        <label htmlFor="idFile">ID Document *</label>
         <input
-          type="text"
-          id="idNumber"
-          name="idNumber"
-          value={formData.idNumber}
+          type="file"
+          id="idFile"
+          name="idFile"
           onChange={handleChange}
-          placeholder="Enter your ID number"
+          accept=".pdf,.jpg,.jpeg,.png"
           required
           disabled={loading}
         />
+        <small>Upload a clear photo/scan of your ID</small>
       </div>
     </>
   );
@@ -347,6 +371,7 @@ const Signup = ({ onLogin }) => {
     </>
   );
 
+  // ... keep renderBaseUserFields() and return statement the same as before
   const renderBaseUserFields = () => (
     <>
       <div className="name-group">
@@ -467,7 +492,7 @@ const Signup = ({ onLogin }) => {
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="auth-form">
+        <form onSubmit={handleSubmit} className="auth-form" encType="multipart/form-data">
           <div className="form-group">
             <label>I am a</label>
             <div className="role-selection">
