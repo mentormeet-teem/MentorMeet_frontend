@@ -5,22 +5,32 @@ import '../../styles/Dashboard.css';
 const Dashboard = ({ user, onLogout }) => {
   const [activeTab, setActiveTab] = useState('overview');
   const [data, setData] = useState(null);
+  const [pendingTutors, setPendingTutors] = useState([]);
+  const [verifiedTutors, setVerifiedTutors] = useState([]);
+  const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  const toFileUrl = (path) => {
+    if (!path) return null;
+    if (/^https?:\/\//i.test(path)) return path;
+    const trimmed = String(path).startsWith('/') ? path.slice(1) : String(path);
+    return `http://localhost:5010/${trimmed}`;
+  };
 
   // Debug: Check what user data we're receiving
   useEffect(() => {
     console.log('User data in dashboard:', user);
   }, [user]);
 
-  const fetchPendingTutors = async () => {
+  const fetchPendingTutors = async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       setError('');
       const token = localStorage.getItem('mentormeet_token');
       console.log('Fetching pending tutors with token:', token ? 'Token exists' : 'No token');
       
-      const response = await axios.get('http://localhost:5010/api/admin/pending-tutors', {
+      const response = await axios.get('http://localhost:5010/api/admin/tutors/pending', {
         headers: { 
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -28,7 +38,8 @@ const Dashboard = ({ user, onLogout }) => {
       });
       
       console.log('Pending tutors response:', response.data);
-      setData(response.data);
+      setPendingTutors(Array.isArray(response.data) ? response.data : []);
+      setData(Array.isArray(response.data) ? response.data : []);
       
     } catch (err) {
       console.error('Error fetching pending tutors:', err);
@@ -45,13 +56,57 @@ const Dashboard = ({ user, onLogout }) => {
         setError('Failed to load pending tutors. Please try again.');
       }
     } finally {
+      if (!silent) setLoading(false);
+    }
+  };
+
+  const fetchStats = async (silent = false) => {
+    try {
+      if (!silent) setLoading(true);
+      setError('');
+      const token = localStorage.getItem('mentormeet_token');
+      const response = await axios.get('http://localhost:5010/api/admin/dashboard/stats', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      setStats(response.data);
+      // Optionally seed counts from stats if lists not yet loaded
+      if (typeof response.data.pendingTutors === 'number') {
+        // leave arrays as-is; counts will read from stats in UI
+      }
+    } catch (err) {
+      if (!silent) setError('Failed to load dashboard stats');
+    } finally {
+      if (!silent) setLoading(false);
+    }
+  };
+
+  const verifyTutor = async (tutorUserId) => {
+    try {
+      setLoading(true);
+      setError('');
+      const token = localStorage.getItem('mentormeet_token');
+      await axios.post(`http://localhost:5010/api/admin/tutors/verify/${tutorUserId}`, null, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      // Refresh lists and counts
+      await fetchPendingTutors(true);
+      await fetchVerifiedTutors(true);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to verify tutor');
+    } finally {
       setLoading(false);
     }
   };
 
-  const fetchVerifiedTutors = async () => {
+  const fetchVerifiedTutors = async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       setError('');
       const token = localStorage.getItem('mentormeet_token');
       console.log('=== DEBUG VERIFIED TUTORS REQUEST ===');
@@ -59,7 +114,7 @@ const Dashboard = ({ user, onLogout }) => {
       console.log('User role:', user.role);
       console.log('Full user object:', user);
       
-      const response = await axios.get('http://localhost:5010/api/admin/verified-tutors', {
+      const response = await axios.get('http://localhost:5010/api/admin/tutors/verified', {
         headers: { 
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -67,7 +122,8 @@ const Dashboard = ({ user, onLogout }) => {
       });
       
       console.log('✅ SUCCESS - Verified tutors response:', response.data);
-      setData(response.data);
+      setVerifiedTutors(Array.isArray(response.data) ? response.data : []);
+      setData(Array.isArray(response.data) ? response.data : []);
       
     } catch (err) {
       console.log('❌ FULL ERROR DETAILS:');
@@ -92,138 +148,155 @@ const Dashboard = ({ user, onLogout }) => {
         setError(`Failed to load verified tutors: ${err.message}`);
       }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
+  // Preload counts for admin overview
+  useEffect(() => {
+    if (user?.role?.toLowerCase() === 'admin') {
+      fetchPendingTutors(true);
+      fetchVerifiedTutors(true);
+      fetchStats(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
+
   const renderAdminContent = () => {
+    // Build main content based on activeTab
+    let mainContent = null;
     switch (activeTab) {
-      case 'overview':
-        return (
-          <div>
-            <h3>Admin Overview</h3>
-            <p>Welcome to MentorMeet Admin Panel</p>
-            <div className="overview-grid">
-              <div className="stat-card">
-                <h3>8</h3>
-                <p>Pending Verifications</p>
-              </div>
-              <div className="stat-card">
-                <h3>25</h3>
-                <p>Verified Tutors</p>
-              </div>
-              <div className="stat-card">
-                <h3>150</h3>
-                <p>Total Users</p>
-              </div>
-              <div className="stat-card">
-                <h3>45</h3>
-                <p>Active Sessions</p>
-              </div>
-            </div>
-            
-            <div style={{marginTop: '30px'}}>
-              <h4>Quick Actions</h4>
-              <button onClick={fetchPendingTutors} className="primary-btn" style={{marginRight: '10px'}}>
-                View Pending Tutors
-              </button>
-              <button onClick={fetchVerifiedTutors} className="primary-btn">
-                View Verified Tutors
-              </button>
-            </div>
-          </div>
-        );
-      
       case 'verifications':
-        return (
+        mainContent = (
           <div>
-            <h3>Tutor Verifications</h3>
-            <p>Manage tutor verification requests</p>
-            
+            <h3>Pending Tutors</h3>
             <button onClick={fetchPendingTutors} className="primary-btn" disabled={loading}>
-              {loading ? 'Loading...' : 'Load Pending Tutors'}
+              {loading ? 'Loading...' : 'Reload'}
             </button>
-            
             {error && <div className="error-message" style={{marginTop: '15px'}}>{error}</div>}
-            
             {loading && <div className="loading" style={{marginTop: '15px'}}>Loading tutor data...</div>}
-            
             {data && data.length > 0 && (
               <div style={{marginTop: '20px'}}>
                 <h4>Pending Tutors ({data.length})</h4>
                 {data.map(tutor => (
                   <div key={tutor.userId} className="tutor-card" style={{
-                    border: '1px solid #e2e8f0',
-                    padding: '15px',
-                    margin: '10px 0',
-                    borderRadius: '8px',
-                    backgroundColor: '#f8f9fa'
+                    border: '1px solid #e2e8f0', padding: '15px', margin: '10px 0', borderRadius: '8px', backgroundColor: '#f8f9fa'
                   }}>
                     <p><strong>{tutor.name}</strong> - {tutor.email}</p>
-                    <p>Subjects: {tutor.subjects}</p>
-                    <p>Qualifications: {tutor.qualifications}</p>
-                    <p>Experience: {tutor.experience} years</p>
-                    <button className="primary-btn" style={{marginTop: '10px'}}>Verify Tutor</button>
+                    <p>Experience: {tutor.yearofexperience} years</p>
+                    <p>Hourly Rate: {tutor.hourlyRate}</p>
+                    <p>ID Type: {tutor.idType}</p>
+                    {tutor.phoneNumber && <p>Phone: {tutor.phoneNumber}</p>}
+                    {tutor.dateOfBirth && <p>DOB: {new Date(tutor.dateOfBirth).toLocaleDateString()}</p>}
+                    {tutor.gender && <p>Gender: {tutor.gender}</p>}
+                    {tutor.createdAt && <p>Applied: {new Date(tutor.createdAt).toLocaleString()}</p>}
+                    <div style={{display:'flex', gap: '8px', flexWrap:'wrap', marginTop:'8px'}}>
+                      {toFileUrl(tutor.resumePath) && (
+                        <a className="primary-btn" href={toFileUrl(tutor.resumePath)} target="_blank" rel="noreferrer">View Resume</a>
+                      )}
+                      {toFileUrl(tutor.idDocumentPath) && (
+                        <a className="primary-btn" href={toFileUrl(tutor.idDocumentPath)} target="_blank" rel="noreferrer">View ID</a>
+                      )}
+                      {toFileUrl(tutor.certificationPath) && (
+                        <a className="secondary-btn" href={toFileUrl(tutor.certificationPath)} target="_blank" rel="noreferrer">View Certificate</a>
+                      )}
+                    </div>
+                    <button onClick={() => verifyTutor(tutor.userId)} className="primary-btn" style={{marginTop: '10px'}}>Verify Tutor</button>
                   </div>
                 ))}
               </div>
             )}
-            
             {data && data.length === 0 && !loading && (
-              <div style={{marginTop: '20px', textAlign: 'center', color: '#718096'}}>
-                No pending tutor verifications
-              </div>
+              <div style={{marginTop: '20px', textAlign: 'center', color: '#718096'}}>No pending tutor verifications</div>
             )}
           </div>
         );
-
+        break;
       case 'users':
-        return (
+        mainContent = (
           <div>
-            <h3>User Management</h3>
-            <p>Manage platform users</p>
-            
+            <h3>Verified Tutors</h3>
             <button onClick={fetchVerifiedTutors} className="primary-btn" disabled={loading}>
-              {loading ? 'Loading...' : 'Load Verified Tutors'}
+              {loading ? 'Loading...' : 'Reload'}
             </button>
-            
             {error && <div className="error-message" style={{marginTop: '15px'}}>{error}</div>}
-            
             {loading && <div className="loading" style={{marginTop: '15px'}}>Loading user data...</div>}
-            
             {data && data.length > 0 && (
               <div style={{marginTop: '20px'}}>
                 <h4>Verified Tutors ({data.length})</h4>
                 {data.map(tutor => (
                   <div key={tutor.userId} className="tutor-card" style={{
-                    border: '1px solid #e2e8f0',
-                    padding: '15px',
-                    margin: '10px 0',
-                    borderRadius: '8px',
-                    backgroundColor: '#f8f9fa'
+                    border: '1px solid #e2e8f0', padding: '15px', margin: '10px 0', borderRadius: '8px', backgroundColor: '#f8f9fa'
                   }}>
                     <p><strong>{tutor.name}</strong> - {tutor.email}</p>
-                    <p>Subjects: {tutor.subjects}</p>
-                    <p>Qualifications: {tutor.qualifications}</p>
-                    {tutor.verifiedAt && (
-                      <p>Verified on: {new Date(tutor.verifiedAt).toLocaleDateString()}</p>
-                    )}
+                    <p>Experience: {tutor.yearofexperience} years</p>
+                    <p>Hourly Rate: {tutor.hourlyRate}</p>
+                    {tutor.verifiedAt && (<p>Verified on: {new Date(tutor.verifiedAt).toLocaleDateString()}</p>)}
+                    {typeof tutor.isActive === 'boolean' && (<p>Status: {tutor.isActive ? 'Active' : 'Inactive'}</p>)}
+                    <div style={{display:'flex', gap: '8px', flexWrap:'wrap', marginTop:'8px'}}>
+                      {toFileUrl(tutor.resumePath) && (<a className="primary-btn" href={toFileUrl(tutor.resumePath)} target="_blank" rel="noreferrer">View Resume</a>)}
+                      {toFileUrl(tutor.idDocumentPath) && (<a className="primary-btn" href={toFileUrl(tutor.idDocumentPath)} target="_blank" rel="noreferrer">View ID</a>)}
+                      {toFileUrl(tutor.certificationPath) && (<a className="secondary-btn" href={toFileUrl(tutor.certificationPath)} target="_blank" rel="noreferrer">View Certificate</a>)}
+                    </div>
                   </div>
                 ))}
               </div>
             )}
-            
             {data && data.length === 0 && !loading && (
-              <div style={{marginTop: '20px', textAlign: 'center', color: '#718096'}}>
-                No verified tutors found
-              </div>
+              <div style={{marginTop: '20px', textAlign: 'center', color: '#718096'}}>No verified tutors found</div>
             )}
           </div>
         );
-
+        break;
+      case 'totalUsers':
+        mainContent = (
+          <div>
+            <h3>Total Users</h3>
+            <p style={{fontSize:'28px', fontWeight:600}}>{stats?.totalUsers ?? 0}</p>
+          </div>
+        );
+        break;
+      case 'activeUsers':
+        mainContent = (
+          <div>
+            <h3>Active Users</h3>
+            <p style={{fontSize:'28px', fontWeight:600}}>{stats?.activeUsers ?? 0}</p>
+          </div>
+        );
+        break;
       default:
-        return <div>Select a tab</div>;
+        mainContent = (
+          <div>
+            <h3>Welcome, Admin</h3>
+          </div>
+        );
     }
+
+    // Sidebar layout
+    return (
+      <div style={{display:'flex', gap:'16px'}}>
+        <aside style={{width:'260px', borderRight:'1px solid #e2e8f0', paddingRight:'12px'}}>
+          <h4>Admin</h4>
+          <nav style={{display:'grid', gap:'8px', marginTop:'10px'}}>
+            <button className={activeTab==='verifications'?'active':''} onClick={() => { setActiveTab('verifications'); fetchPendingTutors(true); }}>
+              Pending Tutors ({(stats?.pendingTutors ?? pendingTutors.length) || 0})
+            </button>
+            <button className={activeTab==='users'?'active':''} onClick={() => { setActiveTab('users'); fetchVerifiedTutors(true); }}>
+              Verified Tutors ({(stats?.verifiedTutors ?? verifiedTutors.length) || 0})
+            </button>
+            <button className={activeTab==='totalUsers'?'active':''} onClick={() => { setActiveTab('totalUsers'); fetchStats(true); }}>
+              Total Users ({stats?.totalUsers ?? 0})
+            </button>
+            <button className={activeTab==='activeUsers'?'active':''} onClick={() => { setActiveTab('activeUsers'); fetchStats(true); }}>
+              Active Sessions ({stats?.activeUsers ?? 0})
+            </button>
+          </nav>
+        </aside>
+        <section style={{flex:1}}>
+          {mainContent}
+        </section>
+      </div>
+    );
   };
 
   
