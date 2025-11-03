@@ -62,19 +62,20 @@
 
 .user-info span {
   font-weight: 600;
-  color: #98a3b7;
+  color:#2d3748;
+  font-size: 0.95rem;
 }
 
 .user-role {
-  font-size: 0.8rem;
-  color: #718096;
+  font-size: 0.85rem;
+  color: #64748b;
   text-transform: capitalize;
 }
 
 .logout-btn {
-  background: #e53e3e;
+  background: #a72c2c;
   color: white;
-  border: none;
+  border:none;
   padding: 8px 16px;
   border-radius: 6px;
   cursor: pointer;
@@ -83,7 +84,7 @@
 }
 
 .logout-btn:hover {
-  background: #c53030;
+  background: #c73838;
 }
 
 .dashboard-main {
@@ -128,12 +129,13 @@
 }
 
 .stat-card {
-  background: white;
+  background:linear-gradient(135deg,#9fa5d5  0%, #e8f5c8 100%);
   padding: 25px;
   border-radius: 12px;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
   text-align: center;
-  border-left: 4px solid #667eea;
+  border-left: 4px solid #e2e8f0;
+ 
 }
 
 .stat-card h3 {
@@ -180,4 +182,33 @@ padding: 16px;
 border-radius: 8px;
 margin: 20px 0;
 text-align: center;
+}
+.row { display: flex; }
+.space-between { justify-content: space-between; }
+.center { align-items: center; }
+.wrap { flex-wrap: wrap; }
+.gap-8 { gap: 8px; }
+.gap-10 { gap: 10px; }
+.mt-8 { margin-top: 8px; }
+.mt-10 { margin-top: 10px; }
+.mt-15 { margin-top: 15px; }
+.mt-16 { margin-top: 16px; }
+.mt-20 { margin-top: 20px; }
+.grid-gap-8 { display: grid; gap: 8px; }
+.grid-gap-16 { display: grid; gap: 16px; }
+.muted { color: #718096; }
+
+.tutor-card {
+  border: 1px solid #e2e8f0;
+  padding: 15px;
+  margin: 10px 0;
+  border-radius: 8px;
+  background-color: #f8f9fa;
+}
+
+.input-basic {
+  padding: 10px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
 }

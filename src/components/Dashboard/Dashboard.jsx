@@ -8,6 +8,14 @@ const Dashboard = ({ user, onLogout }) => {
   const [pendingTutors, setPendingTutors] = useState([]);
   const [verifiedTutors, setVerifiedTutors] = useState([]);
   const [stats, setStats] = useState(null);
+  const [usersList, setUsersList] = useState([]);
+  const [usersPagination, setUsersPagination] = useState({ page: 1, pageSize: 20, totalPages: 1, totalCount: 0 });
+  const [userSearch, setUserSearch] = useState('');
+  const [userRoleFilter, setUserRoleFilter] = useState('All');
+  const [userStatusFilter, setUserStatusFilter] = useState('All');
+  const [tutorSearch, setTutorSearch] = useState('');
+  const [tutorProfile, setTutorProfile] = useState({ hourlyRate: '', subjects: '' });
+  const [profileSaved, setProfileSaved] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -18,10 +26,95 @@ const Dashboard = ({ user, onLogout }) => {
     return `http://localhost:5010/${trimmed}`;
   };
 
-  // Debug: Check what user data we're receiving
+  const normalizedIncludes = (text, q) => String(text || '').toLowerCase().includes(String(q || '').toLowerCase());
+
+  const fetchAllUsers = async (page = 1, pageSize = 20, silent = false) => {
+    try {
+      if (!silent) setLoading(true);
+      setError('');
+      const token = localStorage.getItem('mentormeet_token');
+      const response = await axios.get(`http://localhost:5010/api/admin/users?page=${page}&pageSize=${pageSize}` , {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      const { users, pagination } = response.data || {};
+      setUsersList(Array.isArray(users) ? users : []);
+      if (pagination) {
+        setUsersPagination({
+          page: pagination.page,
+          pageSize: pagination.pageSize,
+          totalPages: pagination.totalPages,
+          totalCount: pagination.totalCount
+        });
+      }
+    } catch (err) {
+      setError('Failed to load users list');
+    } finally {
+      if (!silent) setLoading(false);
+    }
+  };
+
+  const toggleTutorActive = async (tutorUserId, nextActive) => {
+    try {
+      setLoading(true);
+      setError('');
+      const token = localStorage.getItem('mentormeet_token');
+      await axios.put(`http://localhost:5010/api/admin/users/${tutorUserId}/status`,
+        { IsActive: nextActive },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+      setVerifiedTutors(prev => Array.isArray(prev) ? prev.map(t => t.userId === tutorUserId ? { ...t, isActive: nextActive } : t) : prev);
+      setData(prev => Array.isArray(prev) ? prev.map(t => t.userId === tutorUserId ? { ...t, isActive: nextActive } : t) : prev);
+      await fetchStats(true);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to update tutor status');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     console.log('User data in dashboard:', user);
   }, [user]);
+
+  useEffect(() => {
+    const role = user?.role?.toLowerCase();
+    if (role === 'tutor') {
+      const key = `tutor_profile_${user?.id || 'me'}`;
+      try {
+        const raw = localStorage.getItem(key);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          setTutorProfile({
+            hourlyRate: parsed.hourlyRate ?? '',
+            subjects: parsed.subjects ?? ''
+          });
+        }
+      } catch {}
+    }
+  }, [user]);
+
+  const saveTutorProfile = () => {
+    const key = `tutor_profile_${user?.id || 'me'}`;
+    const data = {
+      hourlyRate: tutorProfile.hourlyRate,
+      subjects: tutorProfile.subjects
+    };
+    try {
+      localStorage.setItem(key, JSON.stringify(data));
+      setProfileSaved(true);
+      setTimeout(() => setProfileSaved(false), 1500);
+    } catch (e) {
+      setError('Failed to save profile locally');
+    }
+  };
 
   const fetchPendingTutors = async (silent = false) => {
     try {
@@ -47,7 +140,7 @@ const Dashboard = ({ user, onLogout }) => {
       
       if (err.response?.status === 401) {
         setError('Unauthorized: Please login again');
-        onLogout(); // Auto logout if token is invalid
+        onLogout();
       } else if (err.response?.status === 403) {
         setError('Access denied: Admin privileges required');
       } else if (err.response?.data?.message) {
@@ -72,10 +165,6 @@ const Dashboard = ({ user, onLogout }) => {
         }
       });
       setStats(response.data);
-      // Optionally seed counts from stats if lists not yet loaded
-      if (typeof response.data.pendingTutors === 'number') {
-        // leave arrays as-is; counts will read from stats in UI
-      }
     } catch (err) {
       if (!silent) setError('Failed to load dashboard stats');
     } finally {
@@ -94,7 +183,6 @@ const Dashboard = ({ user, onLogout }) => {
           'Content-Type': 'application/json'
         }
       });
-      // Refresh lists and counts
       await fetchPendingTutors(true);
       await fetchVerifiedTutors(true);
     } catch (err) {
@@ -121,12 +209,12 @@ const Dashboard = ({ user, onLogout }) => {
         }
       });
       
-      console.log('✅ SUCCESS - Verified tutors response:', response.data);
+      console.log(' SUCCESS - Verified tutors response:', response.data);
       setVerifiedTutors(Array.isArray(response.data) ? response.data : []);
       setData(Array.isArray(response.data) ? response.data : []);
       
     } catch (err) {
-      console.log('❌ FULL ERROR DETAILS:');
+      console.log(' FULL ERROR DETAILS:');
       console.log('Error object:', err);
       console.log('Error message:', err.message);
       console.log('Error code:', err.code);
@@ -152,36 +240,35 @@ const Dashboard = ({ user, onLogout }) => {
     }
   };
 
-  // Preload counts for admin overview
   useEffect(() => {
     if (user?.role?.toLowerCase() === 'admin') {
       fetchPendingTutors(true);
       fetchVerifiedTutors(true);
       fetchStats(true);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
+  useEffect(() => {
+    const role = user?.role?.toLowerCase();
+    if (role === 'admin' && activeTab === 'totalUsers') {
+      fetchAllUsers(1, 20, true);
+    }
+  }, [activeTab]);
+
   const renderAdminContent = () => {
-    // Build main content based on activeTab
     let mainContent = null;
     switch (activeTab) {
       case 'verifications':
         mainContent = (
           <div>
             <h3>Pending Tutors</h3>
-            <button onClick={fetchPendingTutors} className="primary-btn" disabled={loading}>
-              {loading ? 'Loading...' : 'Reload'}
-            </button>
-            {error && <div className="error-message" style={{marginTop: '15px'}}>{error}</div>}
-            {loading && <div className="loading" style={{marginTop: '15px'}}>Loading tutor data...</div>}
+            {error && <div className="error-message mt-15">{error}</div>}
+            {loading && <div className="loading mt-15">Loading tutor data...</div>}
             {data && data.length > 0 && (
-              <div style={{marginTop: '20px'}}>
+              <div className="mt-20">
                 <h4>Pending Tutors ({data.length})</h4>
                 {data.map(tutor => (
-                  <div key={tutor.userId} className="tutor-card" style={{
-                    border: '1px solid #e2e8f0', padding: '15px', margin: '10px 0', borderRadius: '8px', backgroundColor: '#f8f9fa'
-                  }}>
+                  <div key={tutor.userId} className="tutor-card">
                     <p><strong>{tutor.name}</strong> - {tutor.email}</p>
                     <p>Experience: {tutor.yearofexperience} years</p>
                     <p>Hourly Rate: {tutor.hourlyRate}</p>
@@ -190,7 +277,7 @@ const Dashboard = ({ user, onLogout }) => {
                     {tutor.dateOfBirth && <p>DOB: {new Date(tutor.dateOfBirth).toLocaleDateString()}</p>}
                     {tutor.gender && <p>Gender: {tutor.gender}</p>}
                     {tutor.createdAt && <p>Applied: {new Date(tutor.createdAt).toLocaleString()}</p>}
-                    <div style={{display:'flex', gap: '8px', flexWrap:'wrap', marginTop:'8px'}}>
+                    <div className="row gap-8 wrap mt-8">
                       {toFileUrl(tutor.resumePath) && (
                         <a className="primary-btn" href={toFileUrl(tutor.resumePath)} target="_blank" rel="noreferrer">View Resume</a>
                       )}
@@ -201,7 +288,7 @@ const Dashboard = ({ user, onLogout }) => {
                         <a className="secondary-btn" href={toFileUrl(tutor.certificationPath)} target="_blank" rel="noreferrer">View Certificate</a>
                       )}
                     </div>
-                    <button onClick={() => verifyTutor(tutor.userId)} className="primary-btn" style={{marginTop: '10px'}}>Verify Tutor</button>
+                    <button onClick={() => verifyTutor(tutor.userId)} className="primary-btn mt-10">Verify Tutor</button>
                   </div>
                 ))}
               </div>
@@ -213,46 +300,136 @@ const Dashboard = ({ user, onLogout }) => {
         );
         break;
       case 'users':
+        const filteredTutors = Array.isArray(data)
+          ? data.filter(t => normalizedIncludes(t.name, tutorSearch) || normalizedIncludes(t.email, tutorSearch))
+          : [];
         mainContent = (
           <div>
             <h3>Verified Tutors</h3>
-            <button onClick={fetchVerifiedTutors} className="primary-btn" disabled={loading}>
-              {loading ? 'Loading...' : 'Reload'}
-            </button>
-            {error && <div className="error-message" style={{marginTop: '15px'}}>{error}</div>}
-            {loading && <div className="loading" style={{marginTop: '15px'}}>Loading user data...</div>}
-            {data && data.length > 0 && (
-              <div style={{marginTop: '20px'}}>
-                <h4>Verified Tutors ({data.length})</h4>
-                {data.map(tutor => (
-                  <div key={tutor.userId} className="tutor-card" style={{
-                    border: '1px solid #e2e8f0', padding: '15px', margin: '10px 0', borderRadius: '8px', backgroundColor: '#f8f9fa'
-                  }}>
+            <div className="row gap-10 center wrap">
+              <input
+                type="text"
+                placeholder="Search name or email..."
+                value={tutorSearch}
+                onChange={(e) => setTutorSearch(e.target.value)}
+                className="input-basic"
+              />
+              <button onClick={fetchVerifiedTutors} className="primary-btn" disabled={loading}>
+                {loading ? 'Loading...' : 'Reload'}
+              </button>
+            </div>
+            {error && <div className="error-message mt-15">{error}</div>}
+            {loading && <div className="loading mt-15">Loading user data...</div>}
+            {filteredTutors && filteredTutors.length > 0 && (
+              <div className="mt-20">
+                <h4>Verified Tutors ({filteredTutors.length})</h4>
+                {filteredTutors.map(tutor => (
+                  <div key={tutor.userId} className="tutor-card">
                     <p><strong>{tutor.name}</strong> - {tutor.email}</p>
                     <p>Experience: {tutor.yearofexperience} years</p>
                     <p>Hourly Rate: {tutor.hourlyRate}</p>
                     {tutor.verifiedAt && (<p>Verified on: {new Date(tutor.verifiedAt).toLocaleDateString()}</p>)}
                     {typeof tutor.isActive === 'boolean' && (<p>Status: {tutor.isActive ? 'Active' : 'Inactive'}</p>)}
-                    <div style={{display:'flex', gap: '8px', flexWrap:'wrap', marginTop:'8px'}}>
+                    <div className="row gap-8 wrap mt-8">
                       {toFileUrl(tutor.resumePath) && (<a className="primary-btn" href={toFileUrl(tutor.resumePath)} target="_blank" rel="noreferrer">View Resume</a>)}
                       {toFileUrl(tutor.idDocumentPath) && (<a className="primary-btn" href={toFileUrl(tutor.idDocumentPath)} target="_blank" rel="noreferrer">View ID</a>)}
                       {toFileUrl(tutor.certificationPath) && (<a className="secondary-btn" href={toFileUrl(tutor.certificationPath)} target="_blank" rel="noreferrer">View Certificate</a>)}
+                      <button
+                        className={tutor.isActive ? 'btn-deactivate' : 'btn-activate'}
+                        onClick={() => toggleTutorActive(tutor.userId, !tutor.isActive)}
+                        disabled={loading}
+                      >
+                        {tutor.isActive ? 'Deactivate' : 'Activate'}
+                      </button>
                     </div>
                   </div>
                 ))}
               </div>
             )}
-            {data && data.length === 0 && !loading && (
+            {Array.isArray(data) && filteredTutors.length === 0 && !loading && (
               <div style={{marginTop: '20px', textAlign: 'center', color: '#718096'}}>No verified tutors found</div>
             )}
           </div>
         );
         break;
       case 'totalUsers':
+        const filteredUsers = Array.isArray(usersList)
+          ? usersList.filter(u => {
+              const matchText = normalizedIncludes(`${u.FirstName} ${u.LastName}`, userSearch) || normalizedIncludes(u.Email, userSearch);
+              const matchRole = userRoleFilter === 'All' ? true : (Array.isArray(u.Roles) ? u.Roles.includes(userRoleFilter) : (u.UserType === userRoleFilter));
+              const matchStatus = userStatusFilter === 'All' ? true : (userStatusFilter === 'Active' ? u.IsActive === true : u.IsActive === false);
+              return matchText && matchRole && matchStatus;
+            })
+          : [];
         mainContent = (
           <div>
             <h3>Total Users</h3>
-            <p style={{fontSize:'28px', fontWeight:600}}>{stats?.totalUsers ?? 0}</p>
+            <div className="grid-gap-16">
+              <div className="row gap-10 wrap center space-between">
+                <p className="muted" style={{fontSize:'16px'}}>Total: {usersPagination.totalCount ?? stats?.totalUsers ?? 0}</p>
+                <div className="row gap-10 wrap">
+                  <input
+                    type="text"
+                    placeholder="Search name or email..."
+                    value={userSearch}
+                    onChange={(e) => setUserSearch(e.target.value)}
+                    className="input-basic"
+                  />
+                  <select value={userRoleFilter} onChange={(e)=>setUserRoleFilter(e.target.value)} className="input-basic">
+                    <option>All</option>
+                    <option>Student</option>
+                    <option>Parent</option>
+                    <option>Tutor</option>
+                    <option>Institution</option>
+                    <option>Admin</option>
+                  </select>
+                  <select value={userStatusFilter} onChange={(e)=>setUserStatusFilter(e.target.value)} className="input-basic">
+                    <option>All</option>
+                    <option>Active</option>
+                    <option>Inactive</option>
+                  </select>
+                  <button onClick={() => fetchAllUsers(usersPagination.page, usersPagination.pageSize)} className="primary-btn" disabled={loading}>
+                    {loading ? 'Loading...' : 'Reload'}
+                  </button>
+                </div>
+              </div>
+            </div>
+            {error && <div className="error-message mt-10">{error}</div>}
+
+            <div className="mt-16 grid-gap-8">
+              {filteredUsers.map(u => (
+                <div key={u.Id} className="tutor-card row space-between center">
+                  <div>
+                    <div style={{fontWeight:600, color:'#1f2937'}}>{u.FirstName} {u.LastName}</div>
+                    <div className="muted" style={{fontSize:'0.9rem'}}>{u.Email}</div>
+                  </div>
+                  <div style={{textAlign:'right'}}>
+                    <div className="muted" style={{fontSize:'0.85rem'}}>{Array.isArray(u.Roles) && u.Roles.length ? u.Roles.join(', ') : (u.UserType || 'User')}</div>
+                    {typeof u.IsActive === 'boolean' && <div style={{fontSize:'0.85rem', color: u.IsActive ? '#059669' : '#b91c1c'}}>{u.IsActive ? 'Active' : 'Inactive'}</div>}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {usersPagination.totalPages > 1 && (
+              <div className="row gap-8" style={{justifyContent:'center', marginTop:'12px'}}>
+                <button
+                  className="primary-btn"
+                  onClick={() => fetchAllUsers(Math.max(1, usersPagination.page - 1), usersPagination.pageSize)}
+                  disabled={loading || usersPagination.page <= 1}
+                >
+                  Prev
+                </button>
+                <div style={{alignSelf:'center', color:'#718096'}}>Page {usersPagination.page} of {usersPagination.totalPages}</div>
+                <button
+                  className="primary-btn"
+                  onClick={() => fetchAllUsers(Math.min(usersPagination.totalPages, usersPagination.page + 1), usersPagination.pageSize)}
+                  disabled={loading || usersPagination.page >= usersPagination.totalPages}
+                >
+                  Next
+                </button>
+              </div>
+            )}
           </div>
         );
         break;
@@ -272,7 +449,6 @@ const Dashboard = ({ user, onLogout }) => {
         );
     }
 
-    // Sidebar layout
     return (
       <div style={{display:'flex', gap:'16px'}}>
         <aside style={{width:'260px', borderRight:'1px solid #e2e8f0', paddingRight:'12px'}}>
@@ -299,24 +475,74 @@ const Dashboard = ({ user, onLogout }) => {
     );
   };
 
-  
+  const renderTutorProfileEditor = () => {
+    return (
+      <div>
+        <h3>Edit Profile</h3>
+        {profileSaved && (<div className="loading mt-10">Saved</div>)}
+        <div className="grid-gap-16" style={{maxWidth:'520px'}}>
+          <div>
+            <label style={{display:'block', fontWeight:600, marginBottom:6, color:'#4a5568'}}>Hourly Rate (ETB)</label>
+            <input
+              type="number"
+              min="0"
+              step="50"
+              value={tutorProfile.hourlyRate}
+              onChange={(e)=> setTutorProfile(p=>({...p, hourlyRate: e.target.value }))}
+              placeholder="e.g. 500"
+              className="input-basic"
+              style={{ width:'100%' }}
+            />
+          </div>
+          <div>
+            <label style={{display:'block', fontWeight:600, marginBottom:6, color:'#4a5568'}}>Subjects (comma-separated)</label>
+            <input
+              type="text"
+              value={tutorProfile.subjects}
+              onChange={(e)=> setTutorProfile(p=>({...p, subjects: e.target.value }))}
+              placeholder="Math, Physics, Chemistry"
+              className="input-basic"
+              style={{ width:'100%' }}
+            />
+            <div className="muted mt-8" style={{fontSize:'0.9rem'}}>
+              Preview: {tutorProfile.subjects ? tutorProfile.subjects.split(',').map(s=>s.trim()).filter(Boolean).join(', ') : '—'}
+            </div>
+          </div>
+          <div className="row gap-8">
+            <button className="primary-btn" onClick={saveTutorProfile} disabled={loading}>Save</button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const renderTutorContent = () => {
+    const hourly = (tutorProfile.hourlyRate && String(tutorProfile.hourlyRate).trim())
+      ? tutorProfile.hourlyRate
+      : (user?.hourlyRate ?? user?.HourlyRate ?? user?.tutorProfile?.hourlyRate ?? user?.TutorProfile?.HourlyRate ?? '');
+    const rawSubjects = (tutorProfile.subjects && String(tutorProfile.subjects).trim())
+      ? tutorProfile.subjects
+      : (user?.subjects ?? user?.Subjects ?? user?.tutorProfile?.subjects ?? user?.TutorProfile?.Subjects ?? '');
+    const subjectsList = Array.isArray(rawSubjects)
+      ? rawSubjects.map(s => String(s).trim()).filter(Boolean)
+      : (typeof rawSubjects === 'string' && rawSubjects.trim() ? rawSubjects.split(',').map(s => s.trim()).filter(Boolean) : []);
+    const subjectsCount = subjectsList.length;
     return (
       <div>
         <h3>Tutor Dashboard</h3>
-        <p>Your tutor account is active and ready for students!</p>
+
         <div className="overview-grid">
           <div className="stat-card">
-            <h3>0</h3>
-            <p>Upcoming Sessions</p>
+            <h3>{user?.name || 'Tutor'}</h3>
+            <p>{user?.email}</p>
           </div>
           <div className="stat-card">
-            <h3>0</h3>
-            <p>Total Students</p>
+            <h3>{hourly ? `${hourly} ETB` : '—'}</h3>
+            <p>Hourly Rate</p>
           </div>
           <div className="stat-card">
-            <h3>0 ETB</h3>
-            <p>Earnings</p>
+            <h3>{subjectsCount}</h3>
+            <p>Subjects</p>
           </div>
         </div>
       </div>
@@ -350,7 +576,7 @@ const Dashboard = ({ user, onLogout }) => {
     
     switch (userRole) {
       case 'admin': return renderAdminContent();
-      case 'tutor': return renderTutorContent();
+      case 'tutor': return activeTab === 'profile' ? renderTutorProfileEditor() : renderTutorContent();
       case 'institution': return renderInstitutionContent();
       default: return <div>Unknown role: {user.role}</div>;
     }

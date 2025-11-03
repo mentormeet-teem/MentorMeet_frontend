@@ -5,13 +5,11 @@ import '../../styles/Auth.css';
 
 const Signup = ({ onLogin }) => {
   const [formData, setFormData] = useState({
-    // Common fields
     email: '',
     password: '',
     confirmPassword: '',
     role: 'tutor',
     
-    // Tutor specific - PERSONAL details
     firstName: '',
     lastName: '',
     dateOfBirth: '',
@@ -23,7 +21,6 @@ const Signup = ({ onLogin }) => {
     certificateFile: null,
     idFile: null,
     
-    // Institution specific - ORGANIZATION details
     institutionName: '',
     institutionType: '',
     address: '',
