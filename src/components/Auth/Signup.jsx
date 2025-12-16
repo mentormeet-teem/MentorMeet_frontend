@@ -1,15 +1,23 @@
-import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import { setAuthToken } from '../../utils/auth';
 import '../../styles/Auth.css';
+import { API_BASE_URL } from '../../config';
 
 const Signup = ({ onLogin }) => {
+  const navigate = useNavigate();
+  useEffect(() => {
+    const token = sessionStorage.getItem('mentormeet_token');
+    if (token) {
+      navigate('/dashboard');
+    }
+  }, [navigate]);
   const [formData, setFormData] = useState({
     email: '',
     password: '',
     confirmPassword: '',
     role: 'tutor',
-    
     firstName: '',
     lastName: '',
     dateOfBirth: '',
@@ -80,7 +88,7 @@ const Signup = ({ onLogin }) => {
       let requestData = {};
 
       if (formData.role === 'tutor') {
-        endpoint = 'http://localhost:5010/api/auth/web/register/tutor';
+        endpoint = `${API_BASE_URL}/api/auth/web/register/tutor`;
         requestData = {
           firstName: formData.firstName.trim(),
           lastName: formData.lastName.trim(),
@@ -119,7 +127,7 @@ const Signup = ({ onLogin }) => {
         window.location.href = '/login';
 
       } else if (formData.role === 'institution') {
-        endpoint = 'http://localhost:5010/api/auth/web/register/institution';
+        endpoint = `${API_BASE_URL}/api/auth/web/register/institution`;
         requestData = {
         email: formData.email.trim(),
         password: formData.password,
@@ -142,14 +150,25 @@ const Signup = ({ onLogin }) => {
         }
 
         const response = await axios.post(endpoint, requestData);
-        const { token, user } = response.data;
-        const adaptedUser = {
-          id: user.id,
-          name: `${user.firstName} ${user.lastName}`,
-          email: user.email,
-          role: user.role.toLowerCase()
-        };
-        onLogin(adaptedUser, token);
+        
+        if (formData.role === 'institution') {
+          const { token, user } = response.data;
+          const adaptedUser = {
+            id: user.id,
+            name: `${user.firstName} ${user.lastName}`,
+            email: user.email,
+            role: user.role.toLowerCase()
+          };
+          
+          setAuthToken(token);
+          
+          onLogin(adaptedUser, token);
+          
+          navigate('/dashboard');
+        } else {
+          alert(response.data.message || 'Registration successful! Please check your email for verification.');
+          navigate('/login');
+        }
       }
       
     } catch (err) {

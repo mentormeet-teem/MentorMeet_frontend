@@ -1,9 +1,12 @@
-import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import { setAuthToken } from '../../utils/auth';
 import '../../styles/Auth.css';
+import { API_BASE_URL } from '../../config';
 
 const Login = ({ onLogin }) => {
+  const navigate = useNavigate();
   const [formData, setFormData] = useState({
     email: '',
     password: ''
@@ -19,30 +22,41 @@ const Login = ({ onLogin }) => {
     
     if (error) setError('');
   };
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  setLoading(true);
+  setError('');
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setError('');
+  try {
+    const response = await axios.post(`${API_BASE_URL}/api/auth/login`, {
+      email: formData.email.trim(),
+      password: formData.password
+    });
 
-    try {
-      const response = await axios.post('http://localhost:5010/api/auth/login', {
-        email: formData.email,
-        password: formData.password
-      });
+    const { token, user } = response.data;
 
-      const { token, user } = response.data;
-      onLogin(user, token);
-      
-    } catch (err) {
-      setError(
-        err.response?.data?.message || 
-        'Login failed. Please check your credentials and try again.'
-      );
-    } finally {
-      setLoading(false);
+    if (!token) {
+      throw new Error('No token received from server');
     }
-  };
+    setAuthToken(token);
+
+    onLogin(user, token);
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    navigate('/dashboard');
+  } catch (err) {
+    console.error('Login error:', err);
+    sessionStorage.removeItem('mentormeet_token');
+
+    setError(
+      err.response?.data?.message || 
+      'Login failed. Please check your credentials and try again.'
+    );
+  } finally {
+    setLoading(false);
+  }
+};
+
 
   return (
     <div className="auth-container">

@@ -1,21 +1,42 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
 import '../../styles/Dashboard.css';
+import { API_BASE_URL } from '../../config';
+import { getAuthToken, isAuthenticated, removeAuthToken } from '../../utils/auth';
 import SubjectManagement from '../Admin/SubjectManagement';
-
+import TutorPage from '../Tutor/TutorPage';
+import TutorAvailability from '../Tutor/TutorAvailability';
+import TutorBookings from '../Tutor/TutorBookings';
 const Dashboard = ({ user, onLogout }) => {
+  const navigate = useNavigate();
+  const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
   const [data, setData] = useState(null);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
+  const [userRole, setUserRole] = useState('');
+  const [isInitializing, setIsInitializing] = useState(true);
+  const [userRoleFilter, setUserRoleFilter] = useState('All');
+  useEffect(() => {
+    if (user) {
+      setUserRole((user.role || '').toLowerCase());
+      setIsInitializing(false);
+    }
+  }, [user]);
+  
+  const [userStatusFilter, setUserStatusFilter] = useState('All');
+  const [userSearch, setUserSearch] = useState('');
   const [pendingTutors, setPendingTutors] = useState([]);
   const [verifiedTutors, setVerifiedTutors] = useState([]);
   const [stats, setStats] = useState(null);
   const [usersList, setUsersList] = useState([]);
-  const [usersPagination, setUsersPagination] = useState({ page: 1, pageSize: 20, totalPages: 1, totalCount: 0 });
-  const [userSearch, setUserSearch] = useState('');
-  const [userRoleFilter, setUserRoleFilter] = useState('All');
-  const [userStatusFilter, setUserStatusFilter] = useState('All');
+  const [usersPagination, setUsersPagination] = useState({ 
+    page: 1, 
+    pageSize: 20, 
+    totalPages: 1, 
+    totalCount: 0 
+  });
   const [profileSaved, setProfileSaved] = useState(false);
   const [tutorProfile, setTutorProfile] = useState({ 
     firstName: '',
@@ -34,23 +55,82 @@ const Dashboard = ({ user, onLogout }) => {
     if (!path) return null;
     if (/^https?:\/\//i.test(path)) return path;
     const trimmed = String(path).startsWith('/') ? path.slice(1) : String(path);
-    // Use relative path which will be proxied by Vite
     return `/api/${trimmed}`;
   };
+  // Function to toggle user active status
+  const toggleUserStatus = async (userId, currentStatus) => {
+    try {
+      setLoading(true);
+      const token = sessionStorage.getItem('mentormeet_token');
+      const newStatus = !currentStatus;
+      
+      console.log('Toggling status for user:', userId, 'Current status:', currentStatus, 'New status:', newStatus);
+      
+      const response = await axios.put(
+        `${API_BASE_URL}/api/admin/users/${userId}/status`,
+        { isActive: newStatus },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+      
+      console.log('Status update response:', response.data);
+      
+      setUsersList(usersList.map(user => {
+        const matchesId = user.id === userId || user.Id === userId || user.userId === userId || user.UserId === userId;
+        if (matchesId) {
+          console.log('Updating user in state:', user.id, 'New status:', newStatus);
+          return {
+            ...user,
+            isActive: newStatus,
+            IsActive: newStatus
+          };
+        }
+        return user;
+      }));
+      
+      fetchAllUsers(usersPagination.page, usersPagination.pageSize, true);
+      
+    } catch (err) {
+      console.error('Error updating user status:', err);
+      if (err.response) {
+        console.error('Response data:', err.response.data);
+        console.error('Response status:', err.response.status);
+      }
+      setError('Failed to update user status: ' + (err.response?.data?.message || err.message));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const fetchAllUsers = async (page = 1, pageSize = 20, silent = false) => {
     try {
       if (!silent) setLoading(true);
       setError('');
-      const token = localStorage.getItem('mentormeet_token');
+      const token = sessionStorage.getItem('mentormeet_token');
     
-      const response = await axios.get(`http://localhost:5010/api/admin/users?page=${page}&pageSize=${pageSize}&excludeRole=Admin`, {
+      const response = await axios.get(`${API_BASE_URL}/api/admin/users?page=${page}&pageSize=${pageSize}&excludeRole=Admin`, {
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json'
         }
       });
       const { users, pagination } = response.data || {};
-      setUsersList(Array.isArray(users) ? users : []);
+      
+      console.log('Fetched users:', users);
+      
+      setUsersList(Array.isArray(users) ? users.map(user => ({
+        ...user,
+        firstName: user.firstName || user.FirstName || '',
+        lastName: user.lastName || user.LastName || '',
+        email: user.email || user.Email || 'N/A',
+        isActive: user.isActive ?? user.IsActive ?? true,
+        id: user.id || user.Id || user.userId || user.UserId
+      })) : []);
+      
       if (pagination) {
         setUsersPagination({
           page: pagination.page,
@@ -60,19 +140,12 @@ const Dashboard = ({ user, onLogout }) => {
         });
       }
     } catch (err) {
+      console.error('Error fetching users:', err);
       setError('Failed to load users list');
     } finally {
       if (!silent) setLoading(false);
     }
   };  useEffect(() => {
-    console.log('User data in dashboard:', user);
-  }, [user]);
-
-  useEffect(() => {
-    console.log('User object:', user);
-  }, [user]);
-
-  useEffect(() => {
     const handleClickOutside = (event) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
         setIsDropdownOpen(false);
@@ -89,27 +162,61 @@ const Dashboard = ({ user, onLogout }) => {
     try {
       setLoading(true);
       setError('');
-      const token = localStorage.getItem('mentormeet_token');
-      console.log('Fetching tutor profile from /api/tutor/profile');
+      const token = sessionStorage.getItem('mentormeet_token');
+      if (!token) {
+        console.error('No authentication token found');
+        return;
+      }
       
-      const response = await axios.get('/api/tutor/profile', {
-        headers: { 
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
+      console.log(`Fetching tutor profile from ${API_BASE_URL}/api/tutor/profile`);
+      
+      const response = await axios.get(
+        `${API_BASE_URL}/api/tutor/profile`,
+        {
+          headers: { 
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          }
         }
-      });
+      );
       
-      const profile = response.data;
-      console.log('Fetched tutor profile:', profile);
+      const profile = response.data?.data || response.data; 
+       console.log('Fetched tutor profile:', profile);
+      
+      let gradeLevels = [];
+      if (profile.gradeLevels) {
+        gradeLevels = Array.isArray(profile.gradeLevels) 
+          ? profile.gradeLevels 
+          : String(profile.gradeLevels).split(',').filter(Boolean);
+      } else if (profile.GradeLevels) {
+        gradeLevels = Array.isArray(profile.GradeLevels)
+          ? profile.GradeLevels
+          : String(profile.GradeLevels).split(',').filter(Boolean);
+      }
+      
+      let subjectIds = [];
+      if (profile.subjectIds) {
+        subjectIds = Array.isArray(profile.subjectIds) 
+          ? profile.subjectIds.map(id => Number(id)).filter(id => !isNaN(id))
+          : [];
+      } else if (profile.Subjects) {
+        const subjects = Array.isArray(profile.Subjects) ? profile.Subjects : [];
+        subjectIds = subjects
+          .map(s => s.subjectId || s.SubjectId)
+          .filter(id => id !== undefined && id !== null)
+          .map(Number)
+          .filter(id => !isNaN(id));
+      }
       
       const initialProfile = {
-        firstName: user?.firstName || '',
-        lastName: user?.lastName || '',
+        firstName: user?.firstName || profile.firstName || profile.FirstName || '',
+        lastName: user?.lastName || profile.lastName || profile.LastName || '',
         hourlyRate: profile.hourlyRate || profile.HourlyRate || '',
         bio: profile.bio || profile.Bio || '',
-        yearsofExperience: profile.yearsofExperience || profile.YearofExperience || 1,
-        subjectIds: (profile.Subjects || []).map(s => s.subjectId || s.SubjectId) || [],
-        gradeLevels: (profile.gradeLevels || profile.GradeLevels || '').split(',').filter(Boolean) || [],
+        yearsofExperience: profile.yearsofExperience || profile.YearofExperience || 0,
+        subjectIds: subjectIds,
+        gradeLevels: gradeLevels,
         teachingStyle: profile.teachingStyle || profile.TeachingStyle || ''
       };
       
@@ -129,123 +236,231 @@ const Dashboard = ({ user, onLogout }) => {
   };
 
   useEffect(() => {
+    if (!isAuthenticated()) {
+      console.error('User not authenticated. Redirecting to login...');
+      removeAuthToken();
+      navigate('/login');
+      return;
+    }
+
     const role = user?.role?.toLowerCase();
     if (role === 'tutor') {
       fetchTutorProfile();
       fetchAvailableSubjects();
     }
-  }, [user]);
+  }, [user, navigate]);
 
-  const fetchAvailableSubjects = async () => {
+const fetchAvailableSubjects = async () => {
+  try {
+    setLoading(true);
+    setError('');
+    
+    const token = getAuthToken();
+    if (!token) {
+      navigate('/login');
+      return;
+    }
+
+    
+    const subjectsResponse = await axios.get(
+      `${API_BASE_URL}/api/tutor/subjects`,
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        }
+      }
+    );
+
+    console.log('Subjects API Response:', subjectsResponse.data);
+
+    let subjectsData = [];
+    if (Array.isArray(subjectsResponse.data)) {
+      subjectsData = subjectsResponse.data;
+    } else if (subjectsResponse.data && Array.isArray(subjectsResponse.data.subjects)) {
+      subjectsData = subjectsResponse.data.subjects;
+    } else if (subjectsResponse.data && subjectsResponse.data.data && Array.isArray(subjectsResponse.data.data)) {
+      subjectsData = subjectsResponse.data.data;
+    }
+
+    const processedSubjects = subjectsData
+      .filter(subject => subject && (subject.SubjectId || subject.id) && (subject.Name || subject.name))
+      .map(subject => ({
+        subjectId: subject.SubjectId || subject.id,
+        name: subject.Name || subject.name,
+        category: subject.Category || subject.category || 'Uncategorized'
+      }));
+    
+    console.log('Processed subjects:', processedSubjects);
+    setAvailableSubjects(processedSubjects);
     try {
-      const predefinedSubjects = [
-        { subjectId: 1, name: 'Mathematics', category: 'Sciences' },
-        { subjectId: 2, name: 'Physics', category: 'Sciences' },
-        { subjectId: 3, name: 'Chemistry', category: 'Sciences' },
-        { subjectId: 4, name: 'Biology', category: 'Sciences' },
-        { subjectId: 5, name: 'English', category: 'Languages' },
-        { subjectId: 6, name: 'Amharic', category: 'Languages' },
-        { subjectId: 7, name: 'ICT', category: 'Technology' },
-        { subjectId: 9, name: 'Economics', category: 'Business' },
-        { subjectId: 10, name: 'Business Studies', category: 'Business' },
-      ];
-
-      console.log('Using predefined subjects:', predefinedSubjects);
-      
-      setAvailableSubjects(predefinedSubjects);
-      try {
-        const token = localStorage.getItem('mentormeet_token');
-        if (token) {
-          const response = await axios.get('/api/tutor/profile', {
-            headers: { 
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json'
-            }
-          });
-          
-          const tutorSubjects = response?.data?.Subjects || [];
-          if (tutorSubjects.length > 0) {
-            const selectedSubjectIds = tutorSubjects
-              .map(s => s.subjectId || s.SubjectId)
-              .filter(Boolean);
-              
-            console.log('Loaded tutor\'s current subjects:', selectedSubjectIds);
-            setTutorProfile(prev => ({
-              ...prev,
-              subjectIds: selectedSubjectIds
-            }));
-            return;
+      const profileResponse = await axios.get(
+        `${API_BASE_URL}/api/tutor/profile`,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
           }
         }
-      } catch (profileError) {
-        console.error('Error loading tutor profile (continuing with default):', profileError);
-       
-      }
-      console.log('No subjects currently selected !');
-      setTutorProfile(prev => ({
-        ...prev,
-        subjectIds: []
-      }));
-      
-    } catch (err) {
-      console.error('Error in fetchAvailableSubjects:', err);
-      setAvailableSubjects([]);
-      setTutorProfile(prev => ({
-        ...prev,
-        subjectIds: []
-      }));
-    }
-  };
+      );
 
+      const tutorSubjects = profileResponse?.data?.Subjects || profileResponse?.data?.subjects || [];
+      if (tutorSubjects.length > 0) {
+        const selectedSubjectIds = tutorSubjects
+          .filter(subject => subject && (subject.SubjectId || subject.id))
+          .map(subject => subject.SubjectId || subject.id);
+        
+        setTutorProfile(prev => ({
+          ...prev,
+          subjectIds: selectedSubjectIds
+        }));
+      }
+    } catch (profileErr) {
+      console.error('Error fetching tutor profile:', profileErr);
+    }
+  } catch (err) {
+    console.error('Error in fetchAvailableSubjects:', err);
+    if (err.response) {
+      console.error('Response status:', err.response.status);
+      console.error('Response data:', err.response.data);
+    }
+  } finally {
+    setLoading(false);
+  }
+};
   const saveTutorProfile = async () => {
     try {
       setLoading(true);
       setError('');
-      const token = localStorage.getItem('mentormeet_token');
+      const token = getAuthToken();
       
-      if (!tutorProfile.hourlyRate || !tutorProfile.subjectIds || tutorProfile.subjectIds.length === 0) {
-        setError('Please fill in all required fields');
+      if (!token) {
+        setError('No authentication token found. Please log in again.');
+        navigate('/login');
+        return;
+      }
+      const requiredFields = {
+        hourlyRate: tutorProfile.hourlyRate,
+        subjectIds: tutorProfile.subjectIds?.length > 0
+      };
+
+      const missingFields = Object.entries(requiredFields)
+        .filter(([_, value]) => !value)
+        .map(([field]) => field);
+
+      if (missingFields.length > 0) {
+        setError(`Please fill in all required fields: ${missingFields.join(', ')}`);
         setLoading(false);
         return;
       }
+      const currentProfile = { ...tutorProfile };
+      
       const subjectIds = (tutorProfile.subjectIds || [])
         .map(id => Number(id))
         .filter(id => !isNaN(id));
-      const data = {
-        hourlyRate: parseFloat(tutorProfile.hourlyRate) || 0,
-        bio: tutorProfile.bio || '',
-        yearofExperience: (tutorProfile.yearsofExperience || 1).toString(),
-        subjectIds: subjectIds,
-        gradeLevels: Array.isArray(tutorProfile.gradeLevels) 
-          ? tutorProfile.gradeLevels.join(',') 
-          : tutorProfile.gradeLevels || '',
-        teachingStyle: tutorProfile.teachingStyle || ''
-      };
+      const gradeLevels = Array.isArray(tutorProfile.gradeLevels)
+        ? tutorProfile.gradeLevels.join(',')
+        : (tutorProfile.gradeLevels || '');
+      const data = new FormData();
+      data.append('bio', tutorProfile.bio || currentProfile.bio || '');
+      data.append('teachingStyle', tutorProfile.teachingStyle || currentProfile.teachingStyle || '');
+      data.append('yearofExperience', 
+        (tutorProfile.yearsofExperience !== undefined 
+          ? tutorProfile.yearsofExperience 
+          : currentProfile.yearsofExperience || 0).toString()
+      );
+      data.append('hourlyRate', 
+        (tutorProfile.hourlyRate !== undefined 
+          ? parseFloat(tutorProfile.hourlyRate) 
+          : parseFloat(currentProfile.hourlyRate) || 0)
+      );
+       const finalSubjectIds = subjectIds.length > 0 
+        ? subjectIds 
+        : (currentProfile.subjectIds || []).map(id => Number(id)).filter(id => !isNaN(id));
+      
+      finalSubjectIds.forEach(id => data.append('subjectIds', id));
+      data.append('gradeLevels', 
+        gradeLevels || 
+        (Array.isArray(currentProfile.gradeLevels) 
+          ? currentProfile.gradeLevels.join(',') 
+          : currentProfile.gradeLevels || '')
+      );
       
       console.log('Sending profile data to server:', JSON.stringify(data, null, 2));
-
-      console.log('Sending profile data to server:', JSON.stringify(data, null, 2));
-
-      
-      const response = await axios.put('/api/tutor/profile', data, {
-        headers: { 
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
+      const response = await axios.put(
+        `${API_BASE_URL}/api/tutor/profile`,
+        data,
+        {
+          headers: { 
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'multipart/form-data'
+          },
+          timeout: 10000 
         }
-      });
+      );
       
       console.log('Profile saved successfully:', response.data);
-      setProfileSaved(true);
-      setTimeout(() => setProfileSaved(false), 1500);
+      const savedProfile = response.data?.data || response.data;
+      const getGradeLevels = (profile) => {
+        if (profile.gradeLevels) {
+          return Array.isArray(profile.gradeLevels) 
+            ? profile.gradeLevels 
+            : String(profile.gradeLevels).split(',').filter(Boolean);
+        }
+        if (profile.GradeLevels) {
+          return Array.isArray(profile.GradeLevels)
+            ? profile.GradeLevels
+            : String(profile.GradeLevels).split(',').filter(Boolean);
+        }
+        return [];
+      };
+       const getSubjectIds = (profile) => {
+        if (profile.subjectIds) {
+          return Array.isArray(profile.subjectIds) 
+            ? profile.subjectIds.map(id => Number(id)).filter(id => !isNaN(id))
+            : [];
+        }
+        if (profile.Subjects) {
+          const subjects = Array.isArray(profile.Subjects) ? profile.Subjects : [];
+          return subjects
+            .map(s => s.subjectId || s.SubjectId)
+            .filter(id => id !== undefined && id !== null)
+            .map(Number)
+            .filter(id => !isNaN(id));
+        }
+        return [];
+      };
+      setTutorProfile(prev => {
+        const updated = {
+          ...prev,
+          hourlyRate: savedProfile.hourlyRate || savedProfile.HourlyRate || prev.hourlyRate || '',
+          bio: savedProfile.bio || savedProfile.Bio || prev.bio || '',
+          yearsofExperience: savedProfile.yearsofExperience || savedProfile.YearofExperience || prev.yearsofExperience || 0,
+          teachingStyle: savedProfile.teachingStyle || savedProfile.TeachingStyle || prev.teachingStyle || '',
+          
+          ...(savedProfile.gradeLevels || savedProfile.GradeLevels ? {
+            gradeLevels: getGradeLevels(savedProfile)
+          } : {}),
+          ...((savedProfile.subjectIds || savedProfile.Subjects) ? {
+            subjectIds: getSubjectIds(savedProfile)
+          } : {})
+        };
+        
+        console.log('Updated tutor profile state:', updated);
+        return updated;
+      });
       
-      fetchTutorProfile();
+      setProfileSaved(true);
+      setTimeout(() => setProfileSaved(false), 3000);
     } catch (err) {
       console.error('Error saving tutor profile:', err);
       if (err.response) {
         console.error('Response data:', err.response.data);
         console.error('Response status:', err.response.status);
       }
-      const errorMessage = err.response?.data?.message || 'Failed to save profile. Please check the console for details.';
+      const errorMessage = err.response?.data?.message || 'Failed to save profile.';
       setError(errorMessage);
     } finally {
       setLoading(false);
@@ -253,7 +468,7 @@ const Dashboard = ({ user, onLogout }) => {
   };
 
   const fetchPendingTutors = async (silent = false) => {
-    const token = localStorage.getItem('mentormeet_token');
+    const token = sessionStorage.getItem('mentormeet_token');
     
     if (!token) {
       setError('No authentication token found. Please log in again.');
@@ -267,7 +482,7 @@ const Dashboard = ({ user, onLogout }) => {
         setError('');
       }
       
-      const response = await axios.get('/api/admin/tutors/pending', {
+      const response = await axios.get(`${API_BASE_URL}/api/admin/tutors/pending`, {
         headers: { 
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -308,8 +523,8 @@ const Dashboard = ({ user, onLogout }) => {
     try {
       if (!silent) setLoading(true);
       setError('');
-      const token = localStorage.getItem('mentormeet_token');
-      const response = await axios.get('/api/admin/dashboard/stats', {
+      const token = sessionStorage.getItem('mentormeet_token');
+      const response = await axios.get(`${API_BASE_URL}/api/admin/dashboard/stats`, {
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -327,8 +542,8 @@ const Dashboard = ({ user, onLogout }) => {
     try {
       setLoading(true);
       setError('');
-      const token = localStorage.getItem('mentormeet_token');
-      await axios.post(`http://localhost:5010/api/admin/tutors/verify/${tutorUserId}`, null, {
+      const token = sessionStorage.getItem('mentormeet_token');
+      await axios.post(`${API_BASE_URL}/api/admin/tutors/verify/${tutorUserId}`, null, {
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -347,13 +562,13 @@ const Dashboard = ({ user, onLogout }) => {
     try {
       if (!silent) setLoading(true);
       setError('');
-      const token = localStorage.getItem('mentormeet_token');
+      const token = sessionStorage.getItem('mentormeet_token');
       console.log('=== DEBUG VERIFIED TUTORS REQUEST ===');
       console.log('Token exists:', !!token);
       console.log('User role:', user.role);
       console.log('Full user object:', user);
       
-      const response = await axios.get('/api/Admin/tutors/verified', {
+      const response = await axios.get(`${API_BASE_URL}/api/Admin/tutors/verified`, {
         headers: { 
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -391,43 +606,6 @@ const Dashboard = ({ user, onLogout }) => {
     }
   };
 
-  const updateUserStatus = async (userId, isActive) => {
-    if (!window.confirm(`Are you sure you want to ${isActive ? 'activate' : 'deactivate'} this user?`)) {
-      return;
-    }
-    try {
-      setLoading(true);
-      setError('');
-      const token = localStorage.getItem('mentormeet_token');
-      await axios.put(
-        `/api/admin/users/${userId}/status`,
-        { isActive },
-        { 
-          headers: { 
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          } 
-        }
-      );
-      setUsersList(usersList.map(user => 
-        user.id === userId ? { ...user, isActive } : user
-      ));
-      if (stats) {
-        setStats({
-          ...stats,
-          activeUsers: isActive 
-            ? (stats.activeUsers || 0) + 1 
-            : Math.max(0, (stats.activeUsers || 1) - 1)
-        });
-      }
-    } catch (err) {
-      setError('Failed to update user status');
-      console.error('Error updating user status:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
     if (user?.role?.toLowerCase() === 'admin') {
       fetchPendingTutors(true);
@@ -460,34 +638,27 @@ const Dashboard = ({ user, onLogout }) => {
       const isAdmin = Array.isArray(user.Roles) 
         ? user.Roles.some(role => role.toLowerCase() === 'admin')
         : (user.UserType || '').toLowerCase() === 'admin';
-      if (isAdmin) return false;
-      
-      const fullName = `${user.FirstName || ''} ${user.LastName || ''}`.toLowerCase().trim();
-      const searchTerm = userSearch.toLowerCase();
       
       const matchesSearch = 
-        (user.Email?.toLowerCase().includes(searchTerm)) ||
-        fullName.includes(searchTerm) ||
-        (user.PhoneNumber?.includes(searchTerm));
+        !userSearch || 
+        (user.firstName?.toLowerCase().includes(userSearch.toLowerCase())) ||
+        (user.lastName?.toLowerCase().includes(userSearch.toLowerCase())) ||
+        (user.email?.toLowerCase().includes(userSearch.toLowerCase()));
+        
+      const matchesRole = 
+        userRoleFilter === 'All' || 
+        (Array.isArray(user.Roles) 
+          ? user.Roles.includes(userRoleFilter)
+          : user.UserType === userRoleFilter);
+          
+      const matchesStatus = 
+        userStatusFilter === 'All' ||
+        (userStatusFilter === 'Active' && user.isActive) ||
+        (userStatusFilter === 'Inactive' && !user.isActive);
       
-      let matchesRole = true;
-      if (userRoleFilter !== 'All') {
-        if (Array.isArray(user.Roles)) {
-          matchesRole = user.Roles.some(role => 
-            role.toLowerCase() === userRoleFilter.toLowerCase()
-          );
-        } else if (user.UserType) {
-          matchesRole = user.UserType.toLowerCase() === userRoleFilter.toLowerCase();
-        } else {
-          matchesRole = false;
-        }
-      }
-      
-      const matchesStatus = userStatusFilter === 'All' || 
-                          (userStatusFilter === 'Active' ? user.IsActive : !user.IsActive);
-      
-      return matchesSearch && matchesRole && matchesStatus;
+      return !isAdmin && matchesSearch && matchesRole && matchesStatus;
     });
+    
     const getAllUserRoles = () => {
       const standardRoles = ['Student', 'Tutor', 'Institution', 'Parent'];
       const foundRoles = new Set(standardRoles);
@@ -511,41 +682,250 @@ const Dashboard = ({ user, onLogout }) => {
         break;
       case 'verifications':
         mainContent = (
-          <div>
-            <h3>Pending Tutors</h3>
-            {error && <div className="error-message mt-15">{error}</div>}
-            {loading && <div className="loading mt-15">Loading tutor data...</div>}
-            {data && data.length > 0 && (
-              <div className="mt-20">
-                <h4>Pending Tutors ({data.length})</h4>
-                {data.map(tutor => (
-                  <div key={tutor.userId} className="tutor-card">
-                    <p><strong>{tutor.name}</strong> - {tutor.email}</p>
-                    <p>Experience: {tutor.yearofexperience} years</p>
-                    <p>Hourly Rate: {tutor.hourlyRate}</p>
-                    <p>ID Type: {tutor.idType}</p>
-                    {tutor.phoneNumber && <p>Phone: {tutor.phoneNumber}</p>}
-                    {tutor.dateOfBirth && <p>DOB: {new Date(tutor.dateOfBirth).toLocaleDateString()}</p>}
-                    {tutor.gender && <p>Gender: {tutor.gender}</p>}
-                    {tutor.createdAt && <p>Applied: {new Date(tutor.createdAt).toLocaleString()}</p>}
-                    <div className="row gap-8 wrap mt-8">
-                      {toFileUrl(tutor.resumePath) && (
-                        <a className="primary-btn" href={toFileUrl(tutor.resumePath)} target="_blank" rel="noreferrer">View Resume</a>
-                      )}
-                      {toFileUrl(tutor.idDocumentPath) && (
-                        <a className="primary-btn" href={toFileUrl(tutor.idDocumentPath)} target="_blank" rel="noreferrer">View ID</a>
-                      )}
-                      {toFileUrl(tutor.certificationPath) && (
-                        <a className="secondary-btn" href={toFileUrl(tutor.certificationPath)} target="_blank" rel="noreferrer">View Certificate</a>
-                      )}
-                    </div>
-                    <button onClick={() => verifyTutor(tutor.userId)} className="primary-btn mt-10">Verify Tutor</button>
-                  </div>
-                ))}
+          <div className="users-management">
+            <h2 className="section-title">Pending Tutor Verifications</h2>
+            {error && <div className="error-message">{error}</div>}
+            {loading && <div className="loading">Loading tutor data...</div>}
+            
+            {data && data.length > 0 ? (
+              <div className="table-responsive" style={{ width: '100%', overflowX: 'auto' }}>
+                <table className="users-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr>
+                      <th style={{ textAlign: 'left', padding: '12px', borderBottom: '1px solid #e2e8f0' }}>#</th>
+                      <th style={{ textAlign: 'left', padding: '12px', borderBottom: '1px solid #e2e8f0' }}>Name</th>
+                      <th style={{ textAlign: 'left', padding: '12px', borderBottom: '1px solid #e2e8f0' }}>Contact</th>
+                      <th style={{ textAlign: 'left', padding: '12px', borderBottom: '1px solid #e2e8f0' }}>Details</th>
+                      <th style={{ textAlign: 'center', padding: '12px', borderBottom: '1px solid #e2e8f0' }}>Documents</th>
+                      <th style={{ textAlign: 'center', padding: '12px', borderBottom: '1px solid #e2e8f0' }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.map((tutor, index) => (
+                      <tr key={tutor.userId} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                        <td style={{ padding: '12px' }}>
+                          <span style={{
+                            display: 'inline-block',
+                            padding: '4px 12px',
+                            borderRadius: '16px',
+                            backgroundColor: '#f7fafc',
+                            border: '1px solid #e2e8f0',
+                            minWidth: '40px',
+                            textAlign: 'center'
+                          }}>
+                            {index + 1}
+                          </span>
+                        </td>
+                        <td style={{ padding: '12px' }}>
+                          <span style={{
+                            display: 'inline-block',
+                            padding: '6px 12px',
+                            borderRadius: '16px',
+                            backgroundColor: '#f7fafc',
+                            border: '1px solid #e2e8f0',
+                            color: '#2d3748',
+                            fontWeight: '500'
+                          }}>
+                            {tutor.name || 'N/A'}
+                          </span>
+                        </td>
+                        <td style={{ padding: '12px' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            <span style={{
+                              display: 'inline-block',
+                              padding: '6px 12px',
+                              borderRadius: '16px',
+                              backgroundColor: '#f7fafc',
+                              border: '1px solid #e2e8f0',
+                              color: '#4a5568',
+                              fontSize: '0.9em'
+                            }}>
+                              {tutor.email || 'N/A'}
+                            </span>
+                            {tutor.phoneNumber && (
+                              <span style={{
+                                display: 'inline-block',
+                                padding: '4px 10px',
+                                borderRadius: '12px',
+                                backgroundColor: '#f0f9ff',
+                                border: '1px solid #e0f2fe',
+                                color: '#0369a1',
+                                fontSize: '0.85em',
+                                width: 'fit-content'
+                              }}>
+                                {tutor.phoneNumber}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td style={{ padding: '12px' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            <span style={{
+                              display: 'inline-block',
+                              padding: '4px 10px',
+                              borderRadius: '12px',
+                              backgroundColor: '#f0fdf4',
+                              border: '1px solid #dcfce7',
+                              color: '#166534',
+                              fontSize: '0.85em',
+                              width: 'fit-content'
+                            }}>
+                              {tutor.yearofexperience || '0'} years exp
+                            </span>
+                            <span style={{
+                              display: 'inline-block',
+                              padding: '4px 10px',
+                              borderRadius: '12px',
+                              backgroundColor: '#fef2f2',
+                              border: '1px solid #fee2e2',
+                              color: '#991b1b',
+                              fontSize: '0.85em',
+                              width: 'fit-content'
+                            }}>
+                              ${tutor.hourlyRate || '0'}/hr
+                            </span>
+                            {tutor.gender && (
+                              <span style={{
+                                display: 'inline-block',
+                                padding: '4px 10px',
+                                borderRadius: '12px',
+                                backgroundColor: '#eff6ff',
+                                border: '1px solid #dbeafe',
+                                color: '#1e40af',
+                                fontSize: '0.85em',
+                                width: 'fit-content'
+                              }}>
+                                {tutor.gender}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td style={{ padding: '12px', textAlign: 'center' }}>
+                          <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                            {toFileUrl(tutor.resumePath) && (
+                              <a 
+                                href={toFileUrl(tutor.resumePath)} 
+                                target="_blank" 
+                                rel="noreferrer"
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  padding: '4px 12px',
+                                  borderRadius: '16px',
+                                  backgroundColor: '#f8fafc',
+                                  border: '1px solid #e2e8f0',
+                                  color: '#334155',
+                                  fontSize: '0.85em',
+                                  textDecoration: 'none',
+                                  transition: 'all 0.2s',
+                                  '&:hover': {
+                                    backgroundColor: '#f1f5f9',
+                                    transform: 'translateY(-1px)'
+                                  }
+                                }}
+                              >
+                                📄 Resume
+                              </a>
+                            )}
+                            {toFileUrl(tutor.idDocumentPath) && (
+                              <a 
+                                href={toFileUrl(tutor.idDocumentPath)} 
+                                target="_blank" 
+                                rel="noreferrer"
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  padding: '4px 12px',
+                                  borderRadius: '16px',
+                                  backgroundColor: '#f0f9ff',
+                                  border: '1px solid #e0f2fe',
+                                  color: '#0369a1',
+                                  fontSize: '0.85em',
+                                  textDecoration: 'none',
+                                  transition: 'all 0.2s',
+                                  '&:hover': {
+                                    backgroundColor: '#e0f2fe',
+                                    transform: 'translateY(-1px)'
+                                  }
+                                }}
+                              >
+                                🆔 ID
+                              </a>
+                            )}
+                            {toFileUrl(tutor.certificationPath) && (
+                              <a 
+                                href={toFileUrl(tutor.certificationPath)} 
+                                target="_blank" 
+                                rel="noreferrer"
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  padding: '4px 12px',
+                                  borderRadius: '16px',
+                                  backgroundColor: '#f0fdf4',
+                                  border: '1px solid #dcfce7',
+                                  color: '#166534',
+                                  fontSize: '0.85em',
+                                  textDecoration: 'none',
+                                  transition: 'all 0.2s',
+                                  '&:hover': {
+                                    backgroundColor: '#dcfce7',
+                                    transform: 'translateY(-1px)'
+                                  }
+                                }}
+                              >
+                              </a>
+                            )}
+                          </div>
+                        </td>
+                        <td style={{ padding: '12px', textAlign: 'center' }}>
+                          <button
+                            onClick={() => verifyTutor(tutor.userId)}
+                            disabled={loading}
+                            style={{
+                              padding: '8px 20px',
+                              borderRadius: '20px',
+                              border: 'none',
+                              cursor: 'pointer',
+                              fontWeight: '500',
+                              background: 'linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%)',
+                              color: 'white',
+                              opacity: loading ? 0.7 : 1,
+                              pointerEvents: loading ? 'none' : 'auto',
+                              transition: 'all 0.3s ease',
+                              minWidth: '110px',
+                              boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                              fontSize: '0.9em',
+                              '&:hover': {
+                                transform: 'translateY(-2px)',
+                                boxShadow: '0 4px 8px rgba(0,0,0,0.15)'
+                              },
+                              '&:active': {
+                                transform: 'translateY(0)',
+                                boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                              }
+                            }}
+                          >
+                            {loading ? 'Verifying...' : 'Verify Tutor'}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-            )}
-            {data && data.length === 0 && !loading && (
-              <div style={{marginTop: '20px', textAlign: 'center', color: '#718096'}}>No pending tutor verifications</div>
+            ) : (
+              <div style={{
+                marginTop: '20px', 
+                padding: '40px 20px',
+                textAlign: 'center', 
+                color: '#64748b',
+                backgroundColor: '#f8fafc',
+                borderRadius: '12px',
+                border: '1px dashed #e2e8f0'
+              }}>
+                No pending tutor verifications at the moment
+              </div>
             )}
           </div>
         );
@@ -559,160 +939,241 @@ const Dashboard = ({ user, onLogout }) => {
         break;
       case 'totalUsers':
         mainContent = (
-          <div className="mt-6">
-            <h2 className="text-2xl font-bold mb-6">User Management</h2>
-            <div style={{
-              backgroundColor: 'white',
-              borderRadius: '12px',
-              boxShadow: '0 2px 10px rgba(0, 0, 0, 0.05)',
-              padding: '24px',
-              marginBottom: '24px'
-            }}>
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: '1fr 200px 180px',
-                gap: '16px',
-                alignItems: 'flex-end'
-              }}>
-                <div style={{ flex: '1 1 300px' }}>
-                  <div style={{
-                    position: 'relative',
-                    display: 'flex',
-                    alignItems: 'center'
-                  }}>
-                    <input
-                      type="text"
-                      placeholder="Search users..."
-                      value={userSearch}
-                      onChange={(e) => setUserSearch(e.target.value)}
-                      style={{
-                        width: '100%',
-                        padding: '12px 15px 12px 40px',
-                        border: '1px solid #e2e8f0',
-                        borderRadius: '8px',
-                        fontSize: '14px',
-                        transition: 'border-color 0.2s',
-                        boxSizing: 'border-box',
-                        height: '44px'
-                      }}
-                    />
-                    <span style={{
-                      position: 'absolute',
-                      left: '12px',
-                      color: '#a0aec0',
-                      pointerEvents: 'none'
-                    }}>
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M11 19C15.4183 19 19 15.4183 19 11C19 6.58172 15.4183 3 11 3C6.58172 3 3 6.58172 3 11C3 15.4183 6.58172 19 11 19Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                        <path d="M21 21L16.65 16.65" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                    </span>
-                  </div>
-                </div>
-                <div style={{ flex: '0 0 200px' }}>
-                  <select
-                    value={userRoleFilter}
-                    onChange={(e) => setUserRoleFilter(e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '12px 15px',
-                      border: '1px solid #e2e8f0',
-                      borderRadius: '8px',
-                      fontSize: '14px',
-                      backgroundColor: 'white',
-                      height: '44px',
-                      cursor: 'pointer',
-                      appearance: 'none',
-                      backgroundImage: 'url("data:image/svg+xml,%3Csvg width=\'12\' height=\'8\' viewBox=\'0 0 12 8\' fill=\'none\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cpath d=\'M1 1.5L6 6.5L11 1.5\' stroke=\'%234A5568\' stroke-width=\'1.5\' stroke-linecap=\'round\' stroke-linejoin=\'round\'/%3E%3C/svg%3E")',
-                      backgroundRepeat: 'no-repeat',
-                      backgroundPosition: 'right 15px center',
-                      paddingRight: '40px'
-                    }}
-                  >
-                    <option value="All">All Roles</option>
-                    {getAllUserRoles().map(role => (
-                      <option key={role} value={role}>{role}</option>
-                    ))}
-                  </select>
-                </div>
-                <div style={{ flex: '0 0 180px' }}>
-                  <select
-                    value={userStatusFilter}
-                    onChange={(e) => setUserStatusFilter(e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '12px 15px',
-                      border: '1px solid #e2e8f0',
-                      borderRadius: '8px',
-                      fontSize: '14px',
-                      backgroundColor: 'white',
-                      height: '44px',
-                      cursor: 'pointer',
-                      appearance: 'none',
-                      backgroundImage: 'url("data:image/svg+xml,%3Csvg width=\'12\' height=\'8\' viewBox=\'0 0 12 8\' fill=\'none\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cpath d=\'M1 1.5L6 6.5L11 1.5\' stroke=\'%234A5568\' stroke-width=\'1.5\' stroke-linecap=\'round\' stroke-linejoin=\'round\'/%3E%3C/svg%3E")',
-                      backgroundRepeat: 'no-repeat',
-                      backgroundPosition: 'right 15px center',
-                      paddingRight: '40px'
-                    }}
-                  >
-                    <option value="All">All Status</option>
-                    <option value="Active">Active</option>
-                    <option value="Inactive">Inactive</option>
-                  </select>
-                </div>
-
+          <div className="users-management">
+            <h2 className="section-title">User Management</h2>
+            
+            <div className="users-filters">
+              <div className="search-container">
+                <input
+                  type="text"
+                  placeholder="Search users..."
+                  value={userSearch}
+                  onChange={(e) => setUserSearch(e.target.value)}
+                  className="search-input"
+                />
+                <span className="search-icon">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M11 19C15.4183 19 19 15.4183 19 11C19 6.58172 15.4183 3 11 3C6.58172 3 3 6.58172 3 11C3 15.4183 6.58172 19 11 19Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    <path d="M21 21L16.65 16.65" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </span>
+              </div>
+              
+              <div className="filter-group">
+                <select
+                  value={userRoleFilter}
+                  onChange={(e) => setUserRoleFilter(e.target.value)}
+                  className="filter-select"
+                >
+                  <option value="All">All Roles</option>
+                  <option value="Student">Student</option>
+                  <option value="Tutor">Tutor</option>
+                  <option value="Admin">Admin</option>
+                </select>
+                
+                <select
+                  value={userStatusFilter}
+                  onChange={(e) => setUserStatusFilter(e.target.value)}
+                  className="filter-select"
+                >
+                  <option value="All">All Status</option>
+                  <option value="Active">Active</option>
+                  <option value="Inactive">Inactive</option>
+                </select>
               </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-6">
-              {filteredUsers.length > 0 ? (
-                filteredUsers.map((user) => (
-                  <div key={user.Id} className="bg-white rounded-lg shadow-sm p-4 border border-gray-100">
-                    <div className="flex items-center justify-between mb-3">
-                      <h4 className="font-medium text-gray-900">
-                        {user.FirstName} {user.LastName}
-                      </h4>
-                      <span className={`px-2 py-1 text-xs rounded-full ${
-                        user.IsActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                      }`}>
-                        {user.IsActive ? 'Active' : 'Inactive'}
-                      </span>
-                    </div>
-                    <p className="text-sm text-gray-600 mb-2">{user.Email}</p>
-                    <div className="flex items-center justify-between mt-3">
-                      <span className="px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-800">
-                        {Array.isArray(user.Roles) ? user.Roles[0] : (user.UserType || 'User')}
-                      </span>
-                      <button
-                        onClick={() => updateUserStatus(user.Id, !user.IsActive)}
-                        className={`action-button ${!user.IsActive ? 'inactive' : ''}`}
-                      >
-                        {user.IsActive ? 'Deactivate' : 'Activate'}
-                      </button>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="col-span-full text-center py-8 text-gray-500">
-                  No users found matching your search criteria
-                </div>
-              )}
+
+            <div className="table-responsive" style={{ width: '100%', overflowX: 'auto' }}>
+              <table className="users-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr>
+                    <th style={{ textAlign: 'left', padding: '12px', borderBottom: '1px solid #e2e8f0' }}>#</th>
+                    <th style={{ textAlign: 'left', padding: '12px', borderBottom: '1px solid #e2e8f0' }}>Name</th>
+                    <th style={{ textAlign: 'left', padding: '12px', borderBottom: '1px solid #e2e8f0' }}>Email</th>
+                    <th style={{ textAlign: 'left', padding: '12px', borderBottom: '1px solid #e2e8f0' }}>Role</th>
+                    <th style={{ textAlign: 'center', padding: '12px', borderBottom: '1px solid #e2e8f0' }}>Status</th>
+                    <th style={{ textAlign: 'center', padding: '12px', borderBottom: '1px solid #e2e8f0' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredUsers.length > 0 ? (
+                    filteredUsers.map((user, index) => (
+                      <tr key={user.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                        <td style={{ padding: '12px' }}>
+                          <span style={{
+                            display: 'inline-block',
+                            padding: '4px 12px',
+                            borderRadius: '16px',
+                            backgroundColor: '#f7fafc',
+                            border: '1px solid #e2e8f0',
+                            minWidth: '40px',
+                            textAlign: 'center'
+                          }}>
+                            {index + 1}
+                          </span>
+                        </td>
+                        <td style={{ padding: '12px' }}>
+                          <span style={{
+                            display: 'inline-block',
+                            padding: '6px 12px',
+                            borderRadius: '16px',
+                            backgroundColor: '#f7fafc',
+                            border: '1px solid #e2e8f0',
+                            color: '#2d3748',
+                            fontWeight: '500'
+                          }}>
+                            {user.firstName || user.FirstName || 'No Name'} {user.lastName || user.LastName || ''}
+                          </span>
+                        </td>
+                        <td style={{ padding: '12px' }}>
+                          <span style={{
+                            display: 'inline-block',
+                            padding: '6px 12px',
+                            borderRadius: '16px',
+                            backgroundColor: '#f7fafc',
+                            border: '1px solid #e2e8f0',
+                            color: '#4a5568',
+                            fontSize: '0.95em'
+                          }}>
+                            {user.email || user.Email || 'N/A'}
+                          </span>
+                        </td>
+                        <td style={{ padding: '12px' }}>
+                          <span style={{
+                            padding: '4px 8px',
+                            borderRadius: '12px',
+                            fontSize: '12px',
+                            fontWeight: '500',
+                            backgroundColor: '#e2e8f0',
+                            color: '#1a365d',
+                            display: 'inline-block',
+                            minWidth: '60px'
+                          }}>
+                            {Array.isArray(user.Roles) && user.Roles.length > 0 
+                              ? user.Roles[0] 
+                              : (user.UserType || 'User')}
+                          </span>
+                        </td>
+                        <td style={{ textAlign: 'center', padding: '12px' }}>
+                          <span style={{
+                            padding: '4px 8px',
+                            borderRadius: '12px',
+                            fontSize: '12px',
+                            fontWeight: '500',
+                            backgroundColor: (user.isActive || user.IsActive) ? '#c6f6d5' : '#fed7d7',
+                            color: (user.isActive || user.IsActive) ? '#22543d' : '#822727',
+                            display: 'inline-block',
+                            minWidth: '60px'
+                          }}>
+                            {(user.isActive || user.IsActive) ? 'Active' : 'Inactive'}
+                          </span>
+                        </td>
+                        <td style={{ textAlign: 'center', padding: '12px' }}>
+                          <button
+                            style={{
+                              padding: '8px 20px',
+                              borderRadius: '20px',
+                              border: 'none',
+                              cursor: 'pointer',
+                              fontWeight: '500',
+                              background: (user.isActive || user.IsActive) 
+                                ? 'linear-gradient(135deg, #f56565 0%, #e53e3e 100%)' 
+                                : 'linear-gradient(135deg, #48bb78 0%, #2f855a 100%)',
+                              color: 'white',
+                              opacity: loading ? 0.7 : 1,
+                              pointerEvents: loading ? 'none' : 'auto',
+                              transition: 'all 0.3s ease',
+                              minWidth: '110px',
+                              boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                              fontSize: '0.9em',
+                              letterSpacing: '0.5px',
+                              textTransform: 'capitalize',
+                              position: 'relative',
+                              overflow: 'hidden',
+                              '&:hover': {
+                                transform: 'translateY(-2px)',
+                                boxShadow: '0 4px 8px rgba(0,0,0,0.15)',
+                                '&::after': {
+                                  opacity: 1
+                                }
+                              },
+                              '&:active': {
+                                transform: 'translateY(0)',
+                                boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                              },
+                              '&::after': {
+                                content: '""',
+                                position: 'absolute',
+                                top: 0,
+                                left: 0,
+                                right: 0,
+                                bottom: 0,
+                                background: 'rgba(255,255,255,0.2)',
+                                opacity: 0,
+                                transition: 'opacity 0.3s ease'
+                              }
+                            }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const userId = user.id || user.Id || user.userId || user.UserId;
+                              const currentStatus = user.isActive || user.IsActive;
+                              console.log('Button clicked - User ID:', userId, 'Current status:', currentStatus);
+                              toggleUserStatus(userId, currentStatus);
+                            }}
+                            disabled={loading}
+                          >
+                            {(user.isActive || user.IsActive) ? 'Deactivate' : 'Activate'}
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan="6" style={{ textAlign: 'center', padding: '20px' }}>
+                        {loading ? 'Loading users...' : 'No users found matching your criteria'}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
+
             {usersPagination.totalPages > 1 && (
-              <div className="mt-4 flex justify-between items-center">
+              <div className="pagination">
                 <button
                   onClick={() => fetchAllUsers(usersPagination.page - 1, usersPagination.pageSize)}
-                  disabled={usersPagination.page <= 1}
-                  className="px-4 py-2 border rounded-md disabled:opacity-50"
+                  disabled={usersPagination.page <= 1 || loading}
                 >
                   Previous
                 </button>
-                <span className="text-sm text-gray-700">
-                  Page {usersPagination.page} of {usersPagination.totalPages}
-                </span>
+                
+                {Array.from({ length: Math.min(5, usersPagination.totalPages) }, (_, i) => {
+                  let pageNum;
+                  if (usersPagination.totalPages <= 5) {
+                    pageNum = i + 1;
+                  } else if (usersPagination.page <= 3) {
+                    pageNum = i + 1;
+                  } else if (usersPagination.page >= usersPagination.totalPages - 2) {
+                    pageNum = usersPagination.totalPages - 4 + i;
+                  } else {
+                    pageNum = usersPagination.page - 2 + i;
+                  }
+                  
+                  return (
+                    <button
+                      key={pageNum}
+                      onClick={() => fetchAllUsers(pageNum, usersPagination.pageSize)}
+                      className={usersPagination.page === pageNum ? 'active' : ''}
+                      disabled={loading}
+                    >
+                      {pageNum}
+                    </button>
+                  );
+                })}
+                
                 <button
                   onClick={() => fetchAllUsers(usersPagination.page + 1, usersPagination.pageSize)}
-                  disabled={usersPagination.page >= usersPagination.totalPages}
-                  className="px-4 py-2 border rounded-md disabled:opacity-50"
+                  disabled={usersPagination.page >= usersPagination.totalPages || loading}
                 >
                   Next
                 </button>
@@ -814,11 +1275,19 @@ const Dashboard = ({ user, onLogout }) => {
     const toggleSubject = (subjectId) => {
       setIsDropdownOpen(false);
       setTutorProfile(prev => {
-        const currentSubjectIds = Array.isArray(prev.subjectIds) ? prev.subjectIds : [];
-        const newSubjectIds = currentSubjectIds.includes(subjectId)
-          ? currentSubjectIds.filter(id => id !== subjectId)
-          : [...currentSubjectIds, subjectId];
-        return { ...prev, subjectIds: newSubjectIds };
+        const currentSubjects = Array.isArray(prev.subjectIds) ? prev.subjectIds : [];
+        const subjectIdNum = Number(subjectId);
+        
+        const newSubjects = currentSubjects.includes(subjectIdNum)
+          ? currentSubjects.filter(id => id !== subjectIdNum)
+          : [...currentSubjects, subjectIdNum];
+        
+        console.log('Toggling subject:', { subjectId, currentSubjects, newSubjects });
+        
+        return {
+          ...prev,
+          subjectIds: newSubjects
+        };
       });
     };
 
@@ -843,25 +1312,21 @@ const Dashboard = ({ user, onLogout }) => {
             <h3 className="section-title">Basic Information</h3>
             <div className="form-row">
               <div className="form-group">
-                <label>First Name *</label>
+                <label>First Name</label>
                 <input
                   type="text"
-                  value={tutorProfile.firstName}
-                  onChange={(e) => setTutorProfile(p => ({ ...p, firstName: e.target.value }))}
-                  placeholder="Enter your first name"
+                  value={user?.firstName || ''}
+                  disabled
                   className="form-input"
-                  required
                 />
               </div>
               <div className="form-group">
-                <label>Last Name *</label>
+                <label>Last Name</label>
                 <input
                   type="text"
-                  value={tutorProfile.lastName}
-                  onChange={(e) => setTutorProfile(p => ({ ...p, lastName: e.target.value }))}
-                  placeholder="Enter your last name"
+                  value={user?.lastName || ''}
+                  disabled
                   className="form-input"
-                  required
                 />
               </div>
             </div>
@@ -932,10 +1397,10 @@ const Dashboard = ({ user, onLogout }) => {
                 >
                   {tutorProfile.subjectIds?.length > 0 ? (
                     <div className="selected-subjects">
-                      {tutorProfile.subjectIds.map(subjectId => {
+                      {tutorProfile.subjectIds?.map(subjectId => {
                         const subject = availableSubjects.find(s => s.subjectId === subjectId);
                         return subject ? (
-                          <span key={subjectId} className="subject-tag">
+                          <span key={`selected-${subjectId}`} className="subject-tag">
                             {subject.name}
                             <span 
                               className="remove-subject"
@@ -943,6 +1408,16 @@ const Dashboard = ({ user, onLogout }) => {
                                 e.stopPropagation();
                                 toggleSubject(subjectId);
                               }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  toggleSubject(subjectId);
+                                }
+                              }}
+                              role="button"
+                              tabIndex={0}
+                              aria-label={`Remove ${subject.name}`}
                             >
                               ×
                             </span>
@@ -958,18 +1433,29 @@ const Dashboard = ({ user, onLogout }) => {
                 
                 {isDropdownOpen && (
                   <div className="dropdown-menu">
-                    {availableSubjects.map(subject => (
-                      <div
-                        key={subject.subjectId}
-                        className={`dropdown-item ${tutorProfile.subjectIds?.includes(subject.subjectId) ? 'selected' : ''}`}
-                        onClick={() => toggleSubject(subject.subjectId)}
-                      >
-                        {subject.name}
-                        {tutorProfile.subjectIds?.includes(subject.subjectId) && (
-                          <span className="checkmark">✓</span>
-                        )}
-                      </div>
-                    ))}
+                    {availableSubjects.length > 0 ? (
+                      availableSubjects.map((subject) => {
+                        if (!subject || !subject.subjectId) return null;
+                        
+                        const subjectId = subject.subjectId;
+                        const isSelected = tutorProfile.subjectIds?.includes(subjectId);
+                        const displayName = subject.name + (subject.category ? ` (${subject.category})` : '');
+                        
+                        return (
+                          <div
+                            key={`subject-${subjectId}`}
+                            className={`dropdown-item ${isSelected ? 'selected' : ''}`}
+                            onClick={() => toggleSubject(subjectId)}
+                            title={displayName}
+                          >
+                            {displayName}
+                            {isSelected && <span className="checkmark">✓</span>}
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div className="dropdown-item disabled">No subjects available</div>
+                    )}
                   </div>
                 )}
               </div>
@@ -1145,8 +1631,14 @@ const Dashboard = ({ user, onLogout }) => {
   const renderTabContent = () => {
     if (loading) return <div className="loading">Loading...</div>;
     if (error) return <div className="error-message">{error}</div>;
-
-    const userRole = user.role?.toLowerCase();
+    
+    if (!userRole) {
+      return (
+        <div className="alert alert-warning">
+          Unable to determine user role. Please try refreshing the page or contact support.
+        </div>
+      );
+    }
     
     if (userRole === 'admin') {
       if (activeTab === 'subjectManagement' || activeTab === 'subjects') {
@@ -1156,10 +1648,20 @@ const Dashboard = ({ user, onLogout }) => {
     }
     if (userRole === 'tutor') {
       switch (activeTab) {
-        case 'overview':
+        case 'tutor-dashboard':
           return renderTutorContent();
         case 'profile':
           return renderTutorProfileEditor();
+        case 'tutor-materials':
+          return (
+            <div className="materials-tab">
+              <TutorPage />
+            </div>
+          );
+        case 'tutor-bookings':
+          return <TutorBookings />;
+        case 'tutor-availability':
+          return <TutorAvailability />;
         default:
           return renderTutorContent();
       }
@@ -1194,18 +1696,49 @@ const Dashboard = ({ user, onLogout }) => {
               </>
             ) : (
               <>
-                <button
-                  onClick={() => setActiveTab('overview')}
-                  className={`tab-button ${activeTab === 'overview' ? 'active' : ''}`}
-                >
-                  Overview
-                </button>
-                <button
-                  onClick={() => setActiveTab('profile')}
-                  className={`tab-button ${activeTab === 'profile' ? 'active' : ''}`}
-                >
-                  Profile
-                </button>
+                <div className="tabs">
+                  {userRole === 'tutor' ? (
+                    <>
+                      <button 
+                        className={`tab-button ${activeTab === 'tutor-dashboard' ? 'active' : ''}`}
+                        onClick={() => setActiveTab('tutor-dashboard')}
+                      >
+                        <i className="fas fa-tachometer-alt"></i> Overview
+                      </button>
+                      <button 
+                        className={`tab-button ${activeTab === 'tutor-materials' ? 'active' : ''}`}
+                        onClick={() => setActiveTab('tutor-materials')}
+                      >
+                        <i className="fas fa-book"></i> Materials
+                      </button>
+                      <button 
+                        className={`tab-button ${activeTab === 'tutor-bookings' ? 'active' : ''}`}
+                        onClick={() => setActiveTab('tutor-bookings')}
+                      >
+                        <i className="fas fa-calendar-check"></i> Bookings
+                      </button>
+                      <button 
+                        className={`tab-button ${activeTab === 'tutor-availability' ? 'active' : ''}`}
+                        onClick={() => setActiveTab('tutor-availability')}
+                      >
+                        <i className="fas fa-calendar-alt"></i> Availability
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={() => setActiveTab('overview')}
+                      className={`tab-button ${activeTab === 'overview' ? 'active' : ''}`}
+                    >
+                      Overview
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setActiveTab('profile')}
+                    className={`tab-button ${activeTab === 'profile' ? 'active' : ''}`}
+                  >
+                    Profile
+                  </button>
+                </div>
               </>
             )}
           </div>
