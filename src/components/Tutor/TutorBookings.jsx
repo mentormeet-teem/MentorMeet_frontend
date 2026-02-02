@@ -22,7 +22,6 @@ const formatDate = (dateString) => {
     if (isNaN(date.getTime())) return 'Invalid Date';
     
     return date.toLocaleDateString('en-US', {
-      timeZone: 'UTC',
       weekday: 'long',
       year: 'numeric',
       month: 'long',
@@ -42,7 +41,6 @@ const formatDateTime = (dateTimeString) => {
     if (isNaN(date.getTime())) return 'Invalid Date/Time';
     
     return date.toLocaleString('en-US', {
-      timeZone: 'UTC',
       year: 'numeric',
       month: 'long',
       day: 'numeric',
@@ -70,8 +68,197 @@ const TutorBookings = () => {
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [rejectionReason, setRejectionReason] = useState('');
   const [isUpdating, setIsUpdating] = useState(false);
-  
- 
+
+  const handleUpdateStatus = async (booking, newStatus, reason = '') => {
+    if (isUpdating) return false;
+    
+    try {
+      setIsUpdating(true);
+      const token = getAuthToken();
+      
+      if (!token) {
+        setError('Authentication required');
+        return false;
+      }
+      console.log('Booking object:', booking);
+      const bookingId = booking.bookingId || booking.BookingId || booking.id;
+      
+      if (!bookingId) {
+        throw new Error('Booking ID is missing');
+      }
+      const currentStatus = ((booking.status || booking.Status || 'pending') + '').toLowerCase().trim();
+      const normalizedNew = (newStatus || '').toLowerCase().trim();
+      
+      if (!normalizedNew) {
+        throw new Error('Invalid status provided');
+      }
+      const validTransitions = {
+        'pending': ['confirmed', 'cancelled'], 
+        'confirmed': ['completed', 'cancelled'],
+        'cancelled': [],
+        'completed': [],
+        'rejected': []
+      };
+
+      if (!validTransitions[currentStatus]?.includes(normalizedNew)) {
+        throw new Error(`Cannot change status from ${currentStatus} to ${normalizedNew}`);
+      }
+
+      const backendStatusMap = {
+        'confirmed': 'Confirmed',
+        'cancelled': 'Cancelled',
+        'completed': 'Completed',
+        'pending': 'Pending',
+        'rejected': 'Rejected',
+        'reject': 'Rejected' 
+      };
+
+      const backendStatus = backendStatusMap[normalizedNew];
+      
+      if (!backendStatus) {
+        throw new Error(`Invalid status: ${normalizedNew}`);
+      }
+      
+      const endpoint = `${API_BASE_URL}/api/booking/tutor/bookings/${bookingId}/status`;
+      
+      console.log('Making request to:', endpoint);
+      console.log('Updating status to:', backendStatus);
+      
+      const response = await axios.put(
+        endpoint,
+        `"${backendStatus}"`,  
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          }
+        }
+      );
+      
+      if (reason && backendStatus === 'Rejected') {
+        await axios.put(
+          `${API_BASE_URL}/api/booking/tutor/bookings/${bookingId}`,
+          { notes: reason },
+          {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          }
+        );
+      }
+      
+      console.log('Update response:', response.data);
+
+      if (response.data) {
+        setBookings(prevBookings => 
+          prevBookings.map(b => 
+            b.bookingId === booking.bookingId 
+              ? { 
+                  ...b, 
+                  status: normalizedNew,
+                  statusForDisplay: normalizedNew === 'cancelled' ? 'rejected' : normalizedNew
+                } 
+              : b
+          )
+        );
+        
+        if (selectedBooking && selectedBooking.bookingId === booking.bookingId) {
+          setSelectedBooking(prev => ({
+            ...prev,
+            status: normalizedNew,
+            statusForDisplay: normalizedNew === 'cancelled' ? 'rejected' : normalizedNew
+          }));
+        }
+        
+        if (normalizedNew === 'cancelled') {
+          setShowDetailsModal(false);
+          setRejectionReason('');
+        }
+        
+        return true;
+      }
+    } catch (error) {
+console.error('Error updating booking status:', {
+        error: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+        endpoint: error.config?.url,
+        requestData: error.config?.data,
+        headers: error.config?.headers
+      });
+      
+      let errorMessage = error.response?.data?.message || 
+        `Failed to update booking status: ${error.message}`;
+      if (error.response?.status === 400) {
+        errorMessage = error.response.data?.message || 'Invalid status transition';
+      } else if (error.response?.status === 404) {
+        errorMessage = 'Booking not found. It may have been deleted.';
+      } else if (!navigator.onLine) {
+        errorMessage = 'No internet connection. Please check your network.';
+      }
+      setError(errorMessage);
+      alert(errorMessage);
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleRejectClick = async (booking) => {
+    try {
+      setError(''); 
+      console.log('Rejecting booking:', booking);
+      
+      const reason = window.prompt('Please enter the reason for rejection (optional):');
+      if (reason === null) {
+        return; 
+      }
+      const success = await handleUpdateStatus(booking, 'cancelled', reason || '');
+      if (success) {
+        await fetchBookings();
+        setRejectionReason('');
+        setShowDetailsModal(false);
+        alert('Booking has been rejected successfully');
+      }
+    } catch (error) {
+      console.error('Error in handleRejectClick:', error);
+      const errorMessage = error.response?.data?.message || error.message || 'Failed to reject booking';
+      setError(errorMessage);
+      alert(`Error: ${errorMessage}`);
+    }
+  };
+
+  const handleAcceptClick = async (bookingOrId) => {
+    try {
+      setError(''); 
+      let booking = bookingOrId;
+      if (typeof bookingOrId === 'string' || typeof bookingOrId === 'number') {
+        booking = bookings.find(b => b.bookingId === bookingOrId || b.id === bookingOrId);
+      }
+      
+      if (!booking) {
+        throw new Error('Booking not found');
+      }
+      
+      console.log('Accepting booking:', booking);
+      
+      if (window.confirm('Are you sure you want to accept this booking?')) {
+        const success = await handleUpdateStatus(booking, 'confirmed');
+        if (success) {
+          await fetchBookings();
+          alert('Booking has been accepted successfully');
+        }
+      }
+    } catch (error) {
+      console.error('Error in handleAcceptClick:', error);
+      const errorMessage = error.response?.data?.message || error.message || 'Failed to accept booking';
+      setError(errorMessage);
+      alert(`Error: ${errorMessage}`);
+    }
+  };
+
+
   const statusFilters = [
     { value: 'all', label: 'All Bookings' },
     { value: 'pending', label: 'Pending' },
@@ -198,29 +385,39 @@ const TutorBookings = () => {
       <td className="action-buttons">
         {booking.status === 'pending' && (
           <>
-            <button 
-              className="action-button accept"
-              onClick={(e) => {
-                e.stopPropagation();
-                updateBookingStatus(booking.bookingId, 'confirmed');
-              }}
-              disabled={isUpdating}
-            >
-              Accept
-            </button>
-            <button 
-              className="action-button reject"
-              onClick={(e) => {
-                e.stopPropagation();
-                if (window.confirm('Are you sure you want to reject this booking?')) {
-                  setSelectedBooking(booking);
-                  setShowDetailsModal(true);
-                }
-              }}
-              disabled={isUpdating}
-            >
-              Reject
-            </button>
+              <button 
+                className="action-button accept"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleAcceptClick(booking);
+                }}
+                disabled={isUpdating}
+              >
+                {isUpdating ? 'Updating...' : 'Accept'}
+              </button>
+              <button 
+                className="action-button reject"
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  const reason = window.prompt('Please enter the reason for rejection (optional):');
+                  if (reason === null) return;
+                  
+                  if (window.confirm('Are you sure you want to reject this booking?')) {
+                    try {
+                      await handleUpdateStatus(booking, 'cancelled', reason || '');
+                      await fetchBookings();
+                      alert('Booking has been rejected successfully');
+                    } catch (error) {
+                      console.error('Error rejecting booking:', error);
+                      const errorMessage = error.response?.data?.message || error.message || 'Failed to reject booking';
+                      alert(`Error: ${errorMessage}`);
+                    }
+                  }
+                }}
+                disabled={isUpdating}
+              >
+                {isUpdating ? 'Updating...' : 'Reject'}
+              </button>
           </>
         )}
       </td>
@@ -268,16 +465,15 @@ const TutorBookings = () => {
               <div className="booking-actions">
                 <h4>Actions</h4>
                 <div className="action-buttons">
-                  <button 
-                    className="action-button accept"
-                    onClick={() => {
-                      updateBookingStatus(selectedBooking.bookingId, 'confirmed');
-                      setShowDetailsModal(false);
-                    }}
-                    disabled={isUpdating}
-                  >
-                    Accept Booking
-                  </button>
+                    <button 
+                      className="action-button accept"
+                      onClick={() => {
+                        handleAcceptClick(selectedBooking);
+                      }}
+                      disabled={isUpdating}
+                    >
+                      {isUpdating ? 'Updating...' : 'Accept Booking'}
+                    </button>
                   <div className="reject-section">
                     <input
                       type="text"
@@ -289,13 +485,10 @@ const TutorBookings = () => {
                     />
                     <button 
                       className="action-button reject"
-                      onClick={() => {
-                        updateBookingStatus(selectedBooking.bookingId, 'cancelled');
-                        setShowDetailsModal(false);
-                      }}
+                      onClick={() => handleRejectClick(selectedBooking)}
                       disabled={isUpdating}
                     >
-                      Reject Booking
+                      {isUpdating ? 'Updating...' : 'Reject Booking'}
                     </button>
                   </div>
                 </div>

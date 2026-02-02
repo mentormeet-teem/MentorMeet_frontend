@@ -14,13 +14,6 @@ import {
 import {
   FaChalkboardTeacher,
   FaUserGraduate,
-  FaBuilding,
-  FaFacebook,
-  FaTwitter,
-  FaInstagram,
-  FaLinkedinIn,
-  FaStar,
-  FaLock,
   FaMobileAlt
 } from 'react-icons/fa';
 import { RiParentLine, RiBookReadLine } from 'react-icons/ri';
@@ -173,19 +166,6 @@ const LandingPage = () => {
               </div>
             </div>
             
-            <div className="feature-card">
-              <div className="feature-icon">
-                <FaBuilding />
-              </div>
-              <h3>For Institutions</h3>
-              <p>
-                Upload materials, sponsor students, and offer certifications. 
-                Manage educational programs through our platform.
-              </p>
-              <Link to="/login" className="feature-link">
-                Institution Login <FiChevronRight />
-              </Link>
-            </div>
             
             <div className="feature-card">
               <div className="feature-icon">
@@ -308,7 +288,6 @@ const LandingPage = () => {
                 <ul>
                   <li><a href="#purpose">For Students</a></li>
                   <li><a href="#purpose">For Tutors</a></li>
-                  <li><a href="#purpose">For Institutions</a></li>
                   <li><Link to="/register">Get Started</Link></li>
                 </ul>
               </div>

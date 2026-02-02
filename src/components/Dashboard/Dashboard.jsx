@@ -5,13 +5,24 @@ import '../../styles/Dashboard.css';
 import { API_BASE_URL } from '../../config';
 import { getAuthToken, isAuthenticated, removeAuthToken } from '../../utils/auth';
 import SubjectManagement from '../Admin/SubjectManagement';
+import AdminAttendanceOverview from '../Admin/AdminAttendanceOverview';
 import TutorPage from '../Tutor/TutorPage';
 import TutorAvailability from '../Tutor/TutorAvailability';
 import TutorBookings from '../Tutor/TutorBookings';
+import AttendanceManager from '../Tutor/AttendanceManager';
+import AdminOverview from '../Admin/AdminOverview';
+import AdminReviewManagement from '../Admin/AdminReviewManagement';
+import AdminPaymentManagement from '../Admin/AdminPaymentManagement';
+import TutorReviewManagement from '../Tutor/TutorReviewManagement';
+import TutorPayments from '../Tutor/TutorPayments';
 const Dashboard = ({ user, onLogout }) => {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('overview');
+const [activeTab, setActiveTab] = useState(() => {
+  const role = user?.role?.toLowerCase();
+  console.log('Initializing activeTab, user role:', role);
+  return role === 'tutor' ? 'tutor-dashboard' : 'overview';
+});
   const [data, setData] = useState(null);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
@@ -19,9 +30,14 @@ const Dashboard = ({ user, onLogout }) => {
   const [isInitializing, setIsInitializing] = useState(true);
   const [userRoleFilter, setUserRoleFilter] = useState('All');
   useEffect(() => {
+  console.log('Current active tab:', activeTab);
+  console.log('User role:', userRole);
+}, [activeTab, userRole]);
+  useEffect(() => {
     if (user) {
       setUserRole((user.role || '').toLowerCase());
       setIsInitializing(false);
+      setIsLoading(false);
     }
   }, [user]);
   
@@ -48,6 +64,7 @@ const Dashboard = ({ user, onLogout }) => {
     gradeLevels: [],
     teachingStyle: ''
   });
+  
   const [availableSubjects, setAvailableSubjects] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -57,7 +74,9 @@ const Dashboard = ({ user, onLogout }) => {
     const trimmed = String(path).startsWith('/') ? path.slice(1) : String(path);
     return `/api/${trimmed}`;
   };
-  // Function to toggle user active status
+useEffect(() => {
+  console.log('Active tab changed:', activeTab);
+}, [activeTab]);
   const toggleUserStatus = async (userId, currentStatus) => {
     try {
       setLoading(true);
@@ -660,7 +679,7 @@ const fetchAvailableSubjects = async () => {
     });
     
     const getAllUserRoles = () => {
-      const standardRoles = ['Student', 'Tutor', 'Institution', 'Parent'];
+      const standardRoles = ['Student', 'Tutor', 'Parent'];
       const foundRoles = new Set(standardRoles);
       
       usersList.forEach(user => {
@@ -688,141 +707,66 @@ const fetchAvailableSubjects = async () => {
             {loading && <div className="loading">Loading tutor data...</div>}
             
             {data && data.length > 0 ? (
-              <div className="table-responsive" style={{ width: '100%', overflowX: 'auto' }}>
-                <table className="users-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <div className="table-responsive">
+                <table className="users-table">
                   <thead>
                     <tr>
-                      <th style={{ textAlign: 'left', padding: '12px', borderBottom: '1px solid #e2e8f0' }}>#</th>
-                      <th style={{ textAlign: 'left', padding: '12px', borderBottom: '1px solid #e2e8f0' }}>Name</th>
-                      <th style={{ textAlign: 'left', padding: '12px', borderBottom: '1px solid #e2e8f0' }}>Contact</th>
-                      <th style={{ textAlign: 'left', padding: '12px', borderBottom: '1px solid #e2e8f0' }}>Details</th>
-                      <th style={{ textAlign: 'center', padding: '12px', borderBottom: '1px solid #e2e8f0' }}>Documents</th>
-                      <th style={{ textAlign: 'center', padding: '12px', borderBottom: '1px solid #e2e8f0' }}>Actions</th>
+                      <th>#</th>
+                      <th>Name</th>
+                      <th>Contact</th>
+                      <th>Details</th>
+                      <th className="text-center">Documents</th>
+                      <th className="text-center">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {data.map((tutor, index) => (
-                      <tr key={tutor.userId} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                        <td style={{ padding: '12px' }}>
-                          <span style={{
-                            display: 'inline-block',
-                            padding: '4px 12px',
-                            borderRadius: '16px',
-                            backgroundColor: '#f7fafc',
-                            border: '1px solid #e2e8f0',
-                            minWidth: '40px',
-                            textAlign: 'center'
-                          }}>
+                      <tr key={tutor.userId} className="table-row">
+                        <td>
+                          <span className="badge-index">
                             {index + 1}
                           </span>
                         </td>
-                        <td style={{ padding: '12px' }}>
-                          <span style={{
-                            display: 'inline-block',
-                            padding: '6px 12px',
-                            borderRadius: '16px',
-                            backgroundColor: '#f7fafc',
-                            border: '1px solid #e2e8f0',
-                            color: '#2d3748',
-                            fontWeight: '500'
-                          }}>
+                        <td>
+                          <span className="user-badge">
                             {tutor.name || 'N/A'}
                           </span>
                         </td>
-                        <td style={{ padding: '12px' }}>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                            <span style={{
-                              display: 'inline-block',
-                              padding: '6px 12px',
-                              borderRadius: '16px',
-                              backgroundColor: '#f7fafc',
-                              border: '1px solid #e2e8f0',
-                              color: '#4a5568',
-                              fontSize: '0.9em'
-                            }}>
+                        <td>
+                          <div className="contact-info">
+                            <span className="email-badge">
                               {tutor.email || 'N/A'}
                             </span>
                             {tutor.phoneNumber && (
-                              <span style={{
-                                display: 'inline-block',
-                                padding: '4px 10px',
-                                borderRadius: '12px',
-                                backgroundColor: '#f0f9ff',
-                                border: '1px solid #e0f2fe',
-                                color: '#0369a1',
-                                fontSize: '0.85em',
-                                width: 'fit-content'
-                              }}>
+                              <span className="phone-badge">
                                 {tutor.phoneNumber}
                               </span>
                             )}
                           </div>
                         </td>
-                        <td style={{ padding: '12px' }}>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                            <span style={{
-                              display: 'inline-block',
-                              padding: '4px 10px',
-                              borderRadius: '12px',
-                              backgroundColor: '#f0fdf4',
-                              border: '1px solid #dcfce7',
-                              color: '#166534',
-                              fontSize: '0.85em',
-                              width: 'fit-content'
-                            }}>
+                        <td>
+                          <div className="details-container">
+                            <span className="experience-badge">
                               {tutor.yearofexperience || '0'} years exp
                             </span>
-                            <span style={{
-                              display: 'inline-block',
-                              padding: '4px 10px',
-                              borderRadius: '12px',
-                              backgroundColor: '#fef2f2',
-                              border: '1px solid #fee2e2',
-                              color: '#991b1b',
-                              fontSize: '0.85em',
-                              width: 'fit-content'
-                            }}>
+                            <span className="rate-badge">
                               ${tutor.hourlyRate || '0'}/hr
                             </span>
                             {tutor.gender && (
-                              <span style={{
-                                display: 'inline-block',
-                                padding: '4px 10px',
-                                borderRadius: '12px',
-                                backgroundColor: '#eff6ff',
-                                border: '1px solid #dbeafe',
-                                color: '#1e40af',
-                                fontSize: '0.85em',
-                                width: 'fit-content'
-                              }}>
+                              <span className="gender-badge">
                                 {tutor.gender}
                               </span>
                             )}
                           </div>
                         </td>
-                        <td style={{ padding: '12px', textAlign: 'center' }}>
-                          <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                        <td className="documents-cell">
+                          <div className="documents-container">
                             {toFileUrl(tutor.resumePath) && (
                               <a 
                                 href={toFileUrl(tutor.resumePath)} 
                                 target="_blank" 
                                 rel="noreferrer"
-                                style={{
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  padding: '4px 12px',
-                                  borderRadius: '16px',
-                                  backgroundColor: '#f8fafc',
-                                  border: '1px solid #e2e8f0',
-                                  color: '#334155',
-                                  fontSize: '0.85em',
-                                  textDecoration: 'none',
-                                  transition: 'all 0.2s',
-                                  '&:hover': {
-                                    backgroundColor: '#f1f5f9',
-                                    transform: 'translateY(-1px)'
-                                  }
-                                }}
+                                className="document-link resume-link"
                               >
                                 📄 Resume
                               </a>
@@ -832,22 +776,7 @@ const fetchAvailableSubjects = async () => {
                                 href={toFileUrl(tutor.idDocumentPath)} 
                                 target="_blank" 
                                 rel="noreferrer"
-                                style={{
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  padding: '4px 12px',
-                                  borderRadius: '16px',
-                                  backgroundColor: '#f0f9ff',
-                                  border: '1px solid #e0f2fe',
-                                  color: '#0369a1',
-                                  fontSize: '0.85em',
-                                  textDecoration: 'none',
-                                  transition: 'all 0.2s',
-                                  '&:hover': {
-                                    backgroundColor: '#e0f2fe',
-                                    transform: 'translateY(-1px)'
-                                  }
-                                }}
+                                className="document-link id-link"
                               >
                                 🆔 ID
                               </a>
@@ -857,54 +786,18 @@ const fetchAvailableSubjects = async () => {
                                 href={toFileUrl(tutor.certificationPath)} 
                                 target="_blank" 
                                 rel="noreferrer"
-                                style={{
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  padding: '4px 12px',
-                                  borderRadius: '16px',
-                                  backgroundColor: '#f0fdf4',
-                                  border: '1px solid #dcfce7',
-                                  color: '#166534',
-                                  fontSize: '0.85em',
-                                  textDecoration: 'none',
-                                  transition: 'all 0.2s',
-                                  '&:hover': {
-                                    backgroundColor: '#dcfce7',
-                                    transform: 'translateY(-1px)'
-                                  }
-                                }}
+                                className="document-link cert-link"
                               >
+                                📜 Cert
                               </a>
                             )}
                           </div>
                         </td>
-                        <td style={{ padding: '12px', textAlign: 'center' }}>
+                        <td className="action-cell">
                           <button
                             onClick={() => verifyTutor(tutor.userId)}
                             disabled={loading}
-                            style={{
-                              padding: '8px 20px',
-                              borderRadius: '20px',
-                              border: 'none',
-                              cursor: 'pointer',
-                              fontWeight: '500',
-                              background: 'linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%)',
-                              color: 'white',
-                              opacity: loading ? 0.7 : 1,
-                              pointerEvents: loading ? 'none' : 'auto',
-                              transition: 'all 0.3s ease',
-                              minWidth: '110px',
-                              boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-                              fontSize: '0.9em',
-                              '&:hover': {
-                                transform: 'translateY(-2px)',
-                                boxShadow: '0 4px 8px rgba(0,0,0,0.15)'
-                              },
-                              '&:active': {
-                                transform: 'translateY(0)',
-                                boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
-                              }
-                            }}
+                            className={`action-button verify-button ${loading ? 'loading' : ''}`}
                           >
                             {loading ? 'Verifying...' : 'Verify Tutor'}
                           </button>
@@ -915,15 +808,7 @@ const fetchAvailableSubjects = async () => {
                 </table>
               </div>
             ) : (
-              <div style={{
-                marginTop: '20px', 
-                padding: '40px 20px',
-                textAlign: 'center', 
-                color: '#64748b',
-                backgroundColor: '#f8fafc',
-                borderRadius: '12px',
-                border: '1px dashed #e2e8f0'
-              }}>
+              <div className="empty-state">
                 No pending tutor verifications at the moment
               </div>
             )}
@@ -983,162 +868,75 @@ const fetchAvailableSubjects = async () => {
               </div>
             </div>
 
-            <div className="table-responsive" style={{ width: '100%', overflowX: 'auto' }}>
-              <table className="users-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <div className="table-responsive">
+              <table className="users-table">
                 <thead>
                   <tr>
-                    <th style={{ textAlign: 'left', padding: '12px', borderBottom: '1px solid #e2e8f0' }}>#</th>
-                    <th style={{ textAlign: 'left', padding: '12px', borderBottom: '1px solid #e2e8f0' }}>Name</th>
-                    <th style={{ textAlign: 'left', padding: '12px', borderBottom: '1px solid #e2e8f0' }}>Email</th>
-                    <th style={{ textAlign: 'left', padding: '12px', borderBottom: '1px solid #e2e8f0' }}>Role</th>
-                    <th style={{ textAlign: 'center', padding: '12px', borderBottom: '1px solid #e2e8f0' }}>Status</th>
-                    <th style={{ textAlign: 'center', padding: '12px', borderBottom: '1px solid #e2e8f0' }}>Actions</th>
+                    <th>#</th>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Role</th>
+                    <th className="text-center">Status</th>
+                    <th className="text-center">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredUsers.length > 0 ? (
                     filteredUsers.map((user, index) => (
-                      <tr key={user.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                        <td style={{ padding: '12px' }}>
-                          <span style={{
-                            display: 'inline-block',
-                            padding: '4px 12px',
-                            borderRadius: '16px',
-                            backgroundColor: '#f7fafc',
-                            border: '1px solid #e2e8f0',
-                            minWidth: '40px',
-                            textAlign: 'center'
-                          }}>
+                      <tr key={user.id} className="table-row">
+                        <td>
+                          <span className="badge-index">
                             {index + 1}
                           </span>
                         </td>
-                        <td style={{ padding: '12px' }}>
-                          <span style={{
-                            display: 'inline-block',
-                            padding: '6px 12px',
-                            borderRadius: '16px',
-                            backgroundColor: '#f7fafc',
-                            border: '1px solid #e2e8f0',
-                            color: '#2d3748',
-                            fontWeight: '500'
-                          }}>
+                        <td>
+                          <span className="user-badge">
                             {user.firstName || user.FirstName || 'No Name'} {user.lastName || user.LastName || ''}
                           </span>
                         </td>
-                        <td style={{ padding: '12px' }}>
-                          <span style={{
-                            display: 'inline-block',
-                            padding: '6px 12px',
-                            borderRadius: '16px',
-                            backgroundColor: '#f7fafc',
-                            border: '1px solid #e2e8f0',
-                            color: '#4a5568',
-                            fontSize: '0.95em'
-                          }}>
+                        <td>
+                          <span className="email-badge">
                             {user.email || user.Email || 'N/A'}
                           </span>
                         </td>
-                        <td style={{ padding: '12px' }}>
-                          <span style={{
-                            padding: '4px 8px',
-                            borderRadius: '12px',
-                            fontSize: '12px',
-                            fontWeight: '500',
-                            backgroundColor: '#e2e8f0',
-                            color: '#1a365d',
-                            display: 'inline-block',
-                            minWidth: '60px'
-                          }}>
+                        <td>
+                          <span className="role-badge">
                             {Array.isArray(user.Roles) && user.Roles.length > 0 
                               ? user.Roles[0] 
                               : (user.UserType || 'User')}
                           </span>
                         </td>
-                        <td style={{ textAlign: 'center', padding: '12px' }}>
-                          <span style={{
-                            padding: '4px 8px',
-                            borderRadius: '12px',
-                            fontSize: '12px',
-                            fontWeight: '500',
-                            backgroundColor: (user.isActive || user.IsActive) ? '#c6f6d5' : '#fed7d7',
-                            color: (user.isActive || user.IsActive) ? '#22543d' : '#822727',
-                            display: 'inline-block',
-                            minWidth: '60px'
-                          }}>
+                        <td className="text-center">
+                          <span className={`status-badge ${(user.isActive || user.IsActive) ? 'active' : 'inactive'}`}>
                             {(user.isActive || user.IsActive) ? 'Active' : 'Inactive'}
                           </span>
                         </td>
-                        <td style={{ textAlign: 'center', padding: '12px' }}>
+                        <td className="action-cell">
                           <button
-                            style={{
-                              padding: '8px 20px',
-                              borderRadius: '20px',
-                              border: 'none',
-                              cursor: 'pointer',
-                              fontWeight: '500',
-                              background: (user.isActive || user.IsActive) 
-                                ? 'linear-gradient(135deg, #f56565 0%, #e53e3e 100%)' 
-                                : 'linear-gradient(135deg, #48bb78 0%, #2f855a 100%)',
-                              color: 'white',
-                              opacity: loading ? 0.7 : 1,
-                              pointerEvents: loading ? 'none' : 'auto',
-                              transition: 'all 0.3s ease',
-                              minWidth: '110px',
-                              boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-                              fontSize: '0.9em',
-                              letterSpacing: '0.5px',
-                              textTransform: 'capitalize',
-                              position: 'relative',
-                              overflow: 'hidden',
-                              '&:hover': {
-                                transform: 'translateY(-2px)',
-                                boxShadow: '0 4px 8px rgba(0,0,0,0.15)',
-                                '&::after': {
-                                  opacity: 1
-                                }
-                              },
-                              '&:active': {
-                                transform: 'translateY(0)',
-                                boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
-                              },
-                              '&::after': {
-                                content: '""',
-                                position: 'absolute',
-                                top: 0,
-                                left: 0,
-                                right: 0,
-                                bottom: 0,
-                                background: 'rgba(255,255,255,0.2)',
-                                opacity: 0,
-                                transition: 'opacity 0.3s ease'
-                              }
-                            }}
                             onClick={(e) => {
                               e.stopPropagation();
                               const userId = user.id || user.Id || user.userId || user.UserId;
-                              const currentStatus = user.isActive || user.IsActive;
-                              console.log('Button clicked - User ID:', userId, 'Current status:', currentStatus);
-                              toggleUserStatus(userId, currentStatus);
+                              toggleUserStatus(userId, user.isActive || user.IsActive);
                             }}
                             disabled={loading}
+                            className={`action-button ${(user.isActive || user.IsActive) ? 'deactivate' : 'activate'}`}
                           >
-                            {(user.isActive || user.IsActive) ? 'Deactivate' : 'Activate'}
+                            {loading ? 'Updating...' : (user.isActive || user.IsActive) ? 'Deactivate' : 'Activate'}
                           </button>
                         </td>
                       </tr>
                     ))
                   ) : (
                     <tr>
-                      <td colSpan="6" style={{ textAlign: 'center', padding: '20px' }}>
-                        {loading ? 'Loading users...' : 'No users found matching your criteria'}
+                      <td colSpan="6" className="empty-state">
+                        No users found matching your criteria.
                       </td>
                     </tr>
                   )}
                 </tbody>
               </table>
             </div>
-
-            {usersPagination.totalPages > 1 && (
+       {usersPagination.totalPages > 1 && (
               <div className="pagination">
                 <button
                   onClick={() => fetchAllUsers(usersPagination.page - 1, usersPagination.pageSize)}
@@ -1182,29 +980,59 @@ const fetchAvailableSubjects = async () => {
           </div>
         );
         break;
-      case 'activeUsers':
-        mainContent = (
-          <div>
-            <h2>Active Users</h2>
-            <p className="text-muted">Currently active user sessions.</p>
-            <div className="stat-card" style={{maxWidth: '300px'}}>
-              <h3>Active Sessions</h3>
-              <p className="stat-value">{stats?.activeUsers ?? 0}</p>
+         
+        case 'tutor-attendance':
+          console.log('Rendering AttendanceManager for tutor-attendance tab');
+          mainContent = (
+            <div key="attendance-manager" className="tutor-section">
+              <h2><i className="fas fa-clipboard-check me-2"></i>Attendance Management</h2>
+              <div className="section-content">
+                <AttendanceManager />
+              </div>
             </div>
-          </div>
-        );
+          );
+          break;
+        case 'activeUsers':
+          mainContent = (
+            <div>
+              <h2>Active Users</h2>
+              <p className="text-muted">Currently active user sessions.</p>
+              <div className="stat-card">
+                <h3>Active Sessions</h3>
+                <p className="stat-value">{stats?.activeUsers ?? 0}</p>
+              </div>
+            </div>
+          );
+          break;
+      case 'overview':
+        mainContent = <AdminOverview />;
+        break;
+      case 'reviews':
+        mainContent = <AdminReviewManagement />;
+        break;
+      case 'payments':
+        mainContent = <AdminPaymentManagement />;
         break;
       default:
         mainContent = (
-          <div>
+          <div className="admin-default-content">
             <h2>Admin Dashboard</h2>
+            <p>Select an option from the sidebar to get started.</p>
           </div>
         );
     }
+    if (!mainContent) {
+      console.warn('No content to render for tab:', activeTab);
+      mainContent = (
+        <div className="alert alert-warning">
+          No content available for this tab. Please try another tab or contact support.
+        </div>
+      );
+    }
 
     return (
-      <div style={{ display: 'flex', gap: '20px' }}>
-        <div style={{ width: '240px', flexShrink: 0 }}>
+      <div className="admin-layout">
+        <div className="admin-sidebar">
           <div className="form-section">
             <h3>Admin Menu</h3>
             <div className="admin-nav">
@@ -1248,10 +1076,22 @@ const fetchAvailableSubjects = async () => {
               >
                 <span>Manage Subjects</span>
               </button>
+              <button 
+                className={activeTab === 'reviews' ? 'active' : ''} 
+                onClick={() => setActiveTab('reviews')}
+              >
+                <span>Reviews</span>
+              </button>
+              <button 
+                className={activeTab === 'payments' ? 'active' : ''} 
+                onClick={() => setActiveTab('payments')}
+              >
+                <span>Payment Management</span>
+              </button>
             </div>
           </div>
         </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
+        <div className="admin-content">
           {mainContent}
         </div>
       </div>
@@ -1609,27 +1449,13 @@ const fetchAvailableSubjects = async () => {
     );
   };
 
-  const renderInstitutionContent = () => {
-    return (
-      <div>
-        <h3>Institution Dashboard</h3>
-        <p>Welcome to your institution portal</p>
-        <div className="overview-grid">
-          <div className="stat-card">
-            <h3>0</h3>
-            <p>Sponsored Students</p>
-          </div>
-          <div className="stat-card">
-            <h3>0</h3>
-            <p>Available Tutors</p>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
   const renderTabContent = () => {
-    if (loading) return <div className="loading">Loading...</div>;
+    console.log('Rendering tab content, activeTab:', activeTab, 'User role:', userRole, 'isLoading:', isLoading);
+    
+    if (isLoading && isInitializing) {
+      return <div className="loading">Loading dashboard...</div>;
+    }
+    
     if (error) return <div className="error-message">{error}</div>;
     
     if (!userRole) {
@@ -1640,9 +1466,14 @@ const fetchAvailableSubjects = async () => {
       );
     }
     
+    let mainContent;
+    
     if (userRole === 'admin') {
       if (activeTab === 'subjectManagement' || activeTab === 'subjects') {
         return <SubjectManagement />;
+      }
+      if (activeTab === 'attendance') {
+        return <AdminAttendanceOverview />;
       }
       return renderAdminContent();
     }
@@ -1662,15 +1493,22 @@ const fetchAvailableSubjects = async () => {
           return <TutorBookings />;
         case 'tutor-availability':
           return <TutorAvailability />;
+        case 'tutor-attendance':
+          return (
+            <div className="attendance-tab">
+              <AttendanceManager />
+            </div>
+          );
+        case 'tutor-reviews':
+          return <TutorReviewManagement />;
+        case 'tutor-payments':
+          return <TutorPayments />;
         default:
           return renderTutorContent();
       }
     }
   
-    if (userRole === 'institution') {
-      return renderInstitutionContent();
-    }
-  
+    
     return <div>Unknown role: {user.role}</div>;
   };
   return (
@@ -1692,6 +1530,12 @@ const fetchAvailableSubjects = async () => {
                   className={`tab-button ${activeTab === 'subjectManagement' ? 'active' : ''}`}
                 >
                   Subject Management
+                </button>
+                <button
+                  onClick={() => setActiveTab('attendance')}
+                  className={`tab-button ${activeTab === 'attendance' ? 'active' : ''}`}
+                >
+                  <i className="fas fa-clipboard-check"></i> Attendance
                 </button>
               </>
             ) : (
@@ -1722,6 +1566,28 @@ const fetchAvailableSubjects = async () => {
                         onClick={() => setActiveTab('tutor-availability')}
                       >
                         <i className="fas fa-calendar-alt"></i> Availability
+                      </button>
+                      <button 
+                        className={`tab-button ${activeTab === 'tutor-attendance' ? 'active' : ''}`}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          console.log('Attendance tab clicked, setting activeTab to tutor-attendance');
+                          setActiveTab('tutor-attendance');
+                        }}
+                      >
+                        <i className="fas fa-clipboard-check"></i> Attendance
+                      </button>
+                      <button 
+                        className={`tab-button ${activeTab === 'tutor-reviews' ? 'active' : ''}`}
+                        onClick={() => setActiveTab('tutor-reviews')}
+                      >
+                        <i className="fas fa-star"></i> Reviews
+                      </button>
+                      <button 
+                        className={`tab-button ${activeTab === 'tutor-payments' ? 'active' : ''}`}
+                        onClick={() => setActiveTab('tutor-payments')}
+                      >
+                        <i className="fas fa-wallet"></i> Earnings
                       </button>
                     </>
                   ) : (

@@ -41,52 +41,51 @@
     flex-direction: column;
     gap: 20px;
   }
-/* Form Layout */
-.form-section {
-  margin-bottom: 2rem;
-  padding: 1.5rem;
-  background: #f8fafc;
-  border-radius: 8px;
-  border: 1px solid #e2e8f0;
-}
-
-.section-title {
-  font-size: 1.1rem;
-  font-weight: 600;
-  margin: 0 0 1.25rem 0;
-  color: #2d3748;
-  padding-bottom: 0.5rem;
-  border-bottom: 1px solid #e2e8f0;
-}
-
-.form-row {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 1rem;
-  margin-bottom: 1rem;
-}
-
-.form-group {
-  margin-bottom: 1rem;
-}
-
-.form-group.full-width {
-  grid-column: 1 / -1;
-}
-
-/* Responsive adjustments */
-@media (max-width: 768px) {
-  .form-row {
-    grid-template-columns: 1fr;
-    gap: 0.75rem;
-  }
-  
   .form-section {
-    padding: 1rem;
+    margin-bottom: 1.5rem;
   }
-}
 
-/* File upload styling */
+  .auth-form .form-row {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important; 
+    gap: 1.5rem !important;
+    margin-bottom: 1.25rem !important;
+    align-items: flex-start !important;
+    width: 100% !important;
+  }
+  .auth-form .form-row > .form-group {
+    width: 100% !important;
+    margin-bottom: 0 !important;
+  }
+  .auth-form .form-row > .form-group {
+    display: flex !important;
+    flex-direction: column !important;
+    height: 100% !important;
+    margin-bottom: 0 !important;
+  }
+
+  .auth-form .form-group {
+    position: relative !important;
+    margin-bottom: 0.75rem !important;
+    display: flex !important;
+    flex-direction: column !important;
+    height: 100% !important;
+    width: 100% !important;
+  }
+
+  .form-group.full-width {
+    grid-column: 1 / -1;
+  }
+  @media (max-width: 768px) {
+    .auth-form .form-row {
+      grid-template-columns: 1fr !important;
+      gap: 1rem !important;
+    }
+    
+    .auth-form .form-group {
+      margin-bottom: 0.75rem !important;
+    }
+  }
 .file-upload-group {
   margin-top: 0.5rem;
 }
@@ -106,27 +105,45 @@
   background: white;
   font-size: 0.875rem;
 }
-
-.form-group {
-  margin-bottom: 20px;
+.password-input-container {
+  position: relative;
+  display: flex;
+  align-items: center;
 }
 
-.form-group label {
-  display: block;
-  margin-bottom: 8px;
-  font-weight: 600;
-  color: #333;
-  font-size: 14px;
-}
-.form-group input,
-.form-group select {
+.password-input {
+  padding-right: 40px;
   width: 100%;
-  padding: 12px;
-  border: 2px solid #e1e5e9;
-  border-radius: 8px;
-  font-size: 14px;
-  transition: all 0.3s ease;
-  box-sizing: border-box;
+}
+
+.password-toggle {
+  position: absolute;
+  right: 10px;
+  background: none;
+  border: none;
+  color: #718096;
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s ease;
+  border-radius: 4px;
+}
+
+.password-toggle:hover {
+  color: #4a5568;
+  background-color: #f7fafc;
+}
+
+.password-toggle:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.password-toggle:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.5);
 }
 
 .form-group input:focus,
@@ -136,94 +153,93 @@
   box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.1);
 }
 
+.form-group input[type="date"] {
+  appearance: none;
+  position: relative;
+  padding-right: 12px;
+}
+
+.form-group input[type="date"]::-webkit-calendar-picker-indicator {
+  position: absolute;
+  right: 8px;
+  opacity: 0.7;
+  cursor: pointer;
+}
+
 .form-group input:disabled,
 .form-group select:disabled {
   background-color: #f8f9fa;
   cursor: not-allowed;
   opacity: 0.7;
 }
-.form-group input[type="file"] {
-  padding: 10px;
-  background-color: #f8f9fa;
-  border: 2px dashed #e1e5e9;
-}
+  .auth-form .form-group input[type="file"] {
+    padding: 8px 10px !important;
+    background-color: #f8f9fa !important;
+    border: 2px dashed #e1e5e9 !important;
+    height: auto !important;
+    min-height: 44px !important;
+    display: flex !important;
+    align-items: center !important;
+    cursor: pointer !important;
+    border-radius: 6px !important;
+    font-size: 0.9rem !important;
+    color: #4a5568 !important;
+    width: 100% !important;
+  }
+
+  .form-group input[type="file"]:hover {
+    border-color: #cbd5e0;
+  }
 
 .form-group input[type="file"]:focus {
   border-color: #4a90e2;
   background-color: #fff;
 }
-.form-group small {
-  display: block;
-  margin-top: 6px;
-  color: #6c757d;
-  font-size: 12px;
-  line-height: 1.4;
-}
-  .form-group {
-    display: flex;
-    flex-direction: column;
+  .form-group small {
+    display: block;
+    margin-top: 4px;
+    color: #6c757d;
+    font-size: 0.75rem;
+    line-height: 1.3;
+    min-height: 1rem;
+    font-weight: 400;
+  }
+  .auth-form .form-group label {
+    display: block !important;
+    margin-bottom: 6px !important;
+    font-weight: 600 !important;
+    color: #4a5568 !important;
+    font-size: 0.9rem !important;
+    line-height: 1.4 !important;
   }
   
-  .form-group label {
-    font-weight: 600;
-    color: #4a5568;
-    margin-bottom: 6px;
-    font-size: 0.9rem;
+  /* Force input/select styles */
+  .auth-form .form-group input,
+  .auth-form .form-group select {
+    width: 100% !important;
+    padding: 10px 12px !important;
+    border: 2px solid #e2e8f0 !important;
+    border-radius: 6px !important;
+    font-size: 0.95rem !important;
+    transition: all 0.2s ease !important;
+    box-sizing: border-box !important;
+    height: 42px !important;
+    background-color: #fff !important;
+    color: #2d3748 !important;
+    font-weight: 400 !important;
+    line-height: 1.5 !important;
+    margin: 0 !important;
   }
   
-  .form-group input,
-  .form-group select {
-    padding: 12px 16px;
-    border: 2px solid #e2e8f0;
-    border-radius: 8px;
-    font-size: 1rem;
-    transition: border-color 0.2s;
-  }
-  
-  .form-group input:focus,
-  .form-group select:focus {
-    outline: none;
-    border-color: #667eea;
+  .auth-form .form-group input:focus,
+  .auth-form .form-group select:focus {
+    outline: none !important;
+    border-color: #4a6cf7 !important;
+    box-shadow: 0 0 0 2px rgba(74, 108, 247, 0.1) !important;
   }
   
   
   
-  .role-selection {
-    display: flex;
-    gap: 15px;
-    margin-top: 8px;
-  }
-  
-  .role-option {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    cursor: pointer;
-    padding: 10px 15px;
-    border: 2px solid #e2e8f0;
-    border-radius: 8px;
-    flex: 1;
-    text-align: center;
-    justify-content: center;
-    transition: all 0.2s;
-  }
-  
-  .role-option input {
-    display: none;
-  }
-  
-  .role-option span {
-    font-weight: 500;
-  }
-  
-  .role-option input:checked + span {
-    color: #667eea;
-  }
-  
-  .role-option:has(input:checked) {
-    border-color: #667eea;
-    background-color: #f7fafc;
-  }
   
   .auth-button {
     background: linear-gradient(135deg,#9fa5d5  0%, #e8f5c8 100%);
@@ -243,33 +259,31 @@
   
   .auth-footer {
     text-align: center;
-    margin-top: 25px;
-    padding-top: 20px;
-    border-top: 1px solid #e2e8f0;
-  }
-  
-  .auth-footer p {
+    font-size: 0.9rem;
     color: #718096;
-    margin-bottom: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
   }
   
   .auth-footer a {
-    color: #667eea;
+    color: #4a90e2;
     text-decoration: none;
-    font-weight: 600;
+    font-weight: 500;
+    transition: color 0.2s;
   }
   
-  .forgot-link {
-    display: block;
-    color: #667eea;
-    text-decoration: none;
-    font-size: 0.9rem;
+  .auth-footer a:hover {
+    color: #2c5282;
+    text-decoration: underline;
   }
   
-  .terms {
-    font-size: 0.8rem;
-    color: #a0aec0;
-    margin-top: 15px;
+  .forgot-password-form {
+    margin-top: 20px;
+    padding: 20px;
+    background: #f8fafc;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
   }
   
   .terms a {
@@ -305,7 +319,7 @@
     transform: none !important;
   }
   
-  .name-group {
+  .form-row {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 15px;
@@ -329,7 +343,3 @@
     box-sizing: border-box; 
   }
   
-  .role-option:has(input:disabled) {
-    background-color: #f7fafc;
-    cursor: not-allowed;
-  }

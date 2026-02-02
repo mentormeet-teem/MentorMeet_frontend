@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { setAuthToken } from '../../utils/auth';
 import '../../styles/Auth.css';
 import { API_BASE_URL } from '../../config';
 
@@ -17,42 +16,56 @@ const Signup = ({ onLogin }) => {
     email: '',
     password: '',
     confirmPassword: '',
-    role: 'tutor',
     firstName: '',
     lastName: '',
     dateOfBirth: '',
     gender: '',
     experience: '',
-    hourlyRate: '',
-    idType: '',
+    hourlyRate: '500',
+    idType: 'National ID',
     cvFile: null,
     certificateFile: null,
-    idFile: null,
-    
-    institutionName: '',
-    institutionType: '',
-    address: '',
-    contactPerson: '',
-    contactPersonPosition: '',
-    website: '',
-    businessRegistrationNumber: ''
+    idFile: null
   });
   
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   const handleChange = (e) => {
-    if (e.target.type === 'file') {
-      setFormData({
-        ...formData,
-        [e.target.name]: e.target.files[0]
-      });
+    const { name, value, type, files } = e.target;
+    
+    if (type === 'file') {
+      setFormData(prev => ({
+        ...prev,
+        [name]: files[0]
+      }));
+    } else if (name === 'PhoneNumber') {
+      let digits = value.replace(/\D/g, '');
+      
+      let formattedPhone;
+      if (digits.startsWith('251')) {
+        formattedPhone = `+${digits}`;
+      } else if (digits.startsWith('0') && digits.length > 1) {
+        formattedPhone = `+251${digits.substring(1)}`;
+      } else if (digits.startsWith('+')) {
+        formattedPhone = value;
+      } else {
+        formattedPhone = `+251${digits}`;
+      }
+      
+      formattedPhone = formattedPhone.substring(0, 20);
+      
+      setFormData(prev => ({
+        ...prev,
+        [name]: formattedPhone
+      }));
     } else {
-      setFormData({
-        ...formData,
-        [e.target.name]: e.target.value
-      });
+      setFormData(prev => ({
+        ...prev,
+        [name]: value
+      }));
     }
+    
     if (error) setError('');
   };
 
@@ -69,107 +82,57 @@ const Signup = ({ onLogin }) => {
       return;
     }
 
-    if (formData.role === 'tutor') {
-      if (!formData.cvFile) {
-        setError('Please upload your CV');
-        return;
-      }
-      if (!formData.idFile) {
-        setError('Please upload your ID document');
-        return;
-      }
+    if (!formData.cvFile) {
+      setError('Please upload your CV');
+      return;
+    }
+
+    if (!formData.idFile) {
+      setError('Please upload your ID document');
+      return;
     }
 
     setLoading(true);
     setError('');
 
     try {
-      let endpoint = '';
-      let requestData = {};
-
-      if (formData.role === 'tutor') {
-        endpoint = `${API_BASE_URL}/api/auth/web/register/tutor`;
-        requestData = {
-          firstName: formData.firstName.trim(),
-          lastName: formData.lastName.trim(),
-          email: formData.email.trim(),
-          password: formData.password,
-          ConfirmPassword: formData.confirmPassword,
-          dateOfBirth: formData.dateOfBirth || '2000-01-01',
-          gender: formData.gender || 'Other',
-          qualifications: "See uploaded CV",
-          subjects: "See uploaded CV",
-          YearofExperience: formData.experience ? parseInt(formData.experience) : 1,
-          certifications: formData.certificateFile ? "See uploaded certificates" : "None",
-          hourlyRate: formData.hourlyRate ? parseFloat(formData.hourlyRate) : 500,
-          idNumber: "See uploaded ID",
-          idType: formData.idType || "National ID"
-        };
-
-        const formDataToSend = new FormData();
-        Object.keys(requestData).forEach(key => {
-          formDataToSend.append(key, requestData[key]);
-        });
-
-        formDataToSend.append('ResumeFile', formData.cvFile);
-        if (formData.certificateFile) {
-          formDataToSend.append('CertificateFile', formData.certificateFile);
-        }
-        formDataToSend.append('IdDocumentFile', formData.idFile);
-
-        const response = await axios.post(endpoint, formDataToSend, {
-          headers: {
-            'Content-Type': 'multipart/form-data'
-          }
-        });
-        
-        alert(response.data.message || 'Tutor registration submitted! Please wait for admin verification.');
-        window.location.href = '/login';
-
-      } else if (formData.role === 'institution') {
-        endpoint = `${API_BASE_URL}/api/auth/web/register/institution`;
-        requestData = {
+      const endpoint = `${API_BASE_URL}/api/auth/web/register/tutor`;
+      const requestData = {
+        firstName: formData.firstName.trim(),
+        lastName: formData.lastName.trim(),
         email: formData.email.trim(),
         password: formData.password,
         ConfirmPassword: formData.confirmPassword,
-        institutionName: formData.institutionName,
-        institutionType: formData.institutionType || 'School',
-        address: formData.address,
-        contactPerson: formData.contactPerson,
-        contactPersonPosition: formData.contactPersonPosition || 'Manager',
-        website: formData.website || '',
-        businessRegistrationNumber: formData.businessRegistrationNumber
+        dateOfBirth: formData.dateOfBirth || '2000-01-01',
+        gender: formData.gender || 'Other',
+        qualifications: "See uploaded CV",
+        subjects: "See uploaded CV",
+        YearofExperience: formData.experience ? parseInt(formData.experience) : 1,
+        certifications: formData.certificateFile ? "See uploaded certificates" : "None",
+        hourlyRate: formData.hourlyRate ? parseFloat(formData.hourlyRate) : 500,
+        idNumber: "See uploaded ID",
+        idType: formData.idType
       };
 
-        if (requestData.website) {
-          const w = requestData.website.trim();
-          const hasScheme = /^(https?:\/\/|ftp:\/\/)/i.test(w);
-          requestData.website = hasScheme ? w : `https://${w}`;
-        } else {
-          delete requestData.website;
-        }
+      const formDataToSend = new FormData();
+      Object.keys(requestData).forEach(key => {
+        formDataToSend.append(key, requestData[key]);
+      });
 
-        const response = await axios.post(endpoint, requestData);
-        
-        if (formData.role === 'institution') {
-          const { token, user } = response.data;
-          const adaptedUser = {
-            id: user.id,
-            name: `${user.firstName} ${user.lastName}`,
-            email: user.email,
-            role: user.role.toLowerCase()
-          };
-          
-          setAuthToken(token);
-          
-          onLogin(adaptedUser, token);
-          
-          navigate('/dashboard');
-        } else {
-          alert(response.data.message || 'Registration successful! Please check your email for verification.');
-          navigate('/login');
-        }
+      formDataToSend.append('ResumeFile', formData.cvFile);
+      if (formData.certificateFile) {
+        formDataToSend.append('CertificateFile', formData.certificateFile);
       }
+      formDataToSend.append('IdDocumentFile', formData.idFile);
+
+      const response = await axios.post(endpoint, formDataToSend, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+      
+      alert(response.data.message || 'Tutor registration submitted! Please wait for admin verification.');
+      window.location.href = '/login';
       
     } catch (err) {
       console.log('Full error:', err);
@@ -189,7 +152,6 @@ const Signup = ({ onLogin }) => {
   const renderCommonFields = () => (
     <>
       <div className="form-section">
-       
         <div className="form-group">
           <label htmlFor="email">Email Address *</label>
           <input
@@ -198,7 +160,7 @@ const Signup = ({ onLogin }) => {
             name="email"
             value={formData.email}
             onChange={handleChange}
-            placeholder={formData.role === 'tutor' ? 'you@example.com' : 'institution@institution.edu.et'}
+            placeholder="you@example.com"
             required
             disabled={loading}
           />
@@ -380,7 +342,6 @@ const Signup = ({ onLogin }) => {
             <option value="Passport">Passport</option>
             <option value="Driving License">Driving License</option>
             <option value="National ID">National ID</option>
-            <option value="Teacher License">Teacher License</option>
           </select>
         </div>
   
@@ -398,138 +359,6 @@ const Signup = ({ onLogin }) => {
         </div>
       </div>
     </>
-  );const renderInstitutionFields = () => (
-    <>
-    <div className="form-row">
-      <div className="form-group">
-          <label htmlFor="institutionName">Institution Name *</label>
-          <input
-            type="text"
-            id="institutionName"
-            name="institutionName"
-            value={formData.institutionName}
-            onChange={handleChange}
-            placeholder="institutionName"
-            required
-            disabled={loading}
-          />
-        </div>
-  
-        
-          <div className="form-group">
-            <label htmlFor="institutionType">Institution Type *</label>
-            <select
-              id="institutionType"
-              name="institutionType"
-              value={formData.institutionType}
-              onChange={handleChange}
-              required
-              disabled={loading}
-            >
-              <option value="">Select Type</option>
-              <option value="College">College</option>
-              <option value="University">School</option>
-              <option value="Other">Other</option>
-            </select>
-          </div>
-          </div>
-      
-      
-      <div className="form-group">
-          <label htmlFor="phone">Phone Number *</label>
-          <input
-            type="tel"
-            id="phone"
-            name="phone"
-            value={formData.phone}
-            onChange={handleChange}
-            placeholder="+251 XXX XXX XXX"
-            required
-            disabled={loading}
-          />
-        </div>
-  
-        <div className="form-group">
-          <label htmlFor="website">Institution Website</label>
-          <input
-            type="url"
-            id="website"
-            name="website"
-            value={formData.website}
-            onChange={handleChange}
-            placeholder="https://www.institution.edu.et"
-            disabled={loading}
-          />
-        </div>
-  
-        <div className="form-row">
-         
-          <div className="form-group">
-            <label htmlFor="country">Country *</label>
-            <select
-              id="country"
-              name="country"
-              value={formData.country}
-              onChange={handleChange}
-              required
-              disabled={loading}
-            >
-              <option value="">Select Country</option>
-              <option value="Ethiopia">Ethiopia</option>
-              <option value="Usa">USA</option>
-              <option value="Canada">Canada</option>
-              <option value="Other">Other</option>
-            </select>
-          </div>
-          <div className="form-group">
-            <label htmlFor="city">City *</label>
-            <input
-              type="text"
-              id="city"
-              name="city"
-              value={formData.city}
-              onChange={handleChange}
-              placeholder="Addis Ababa"
-              required
-              disabled={loading}
-            />
-          </div>
-  
-        </div>
-      <div className="form-row">
-          <div className="form-group">
-            <input
-              type="text"
-              id="contactPerson"
-              name="contactPerson"
-              value={formData.contactPerson}
-              onChange={handleChange}
-              placeholder="Full name of contact person"
-              required
-              disabled={loading}
-            />
-          </div>
-  
-          <div className="form-group">
-           <select
-              id="contactPersonPosition"
-              name="contactPersonPosition"
-              value={formData.contactPersonPosition}
-              onChange={handleChange}
-              required
-              disabled={loading}
-            >
-              <option value="">Select Position</option>
-              <option value="Principal">Principal</option>
-              <option value="Director">Director</option>
-              <option value="Manager">Manager</option>
-              <option value="Other">Other</option>
-            </select>
-          </div>
-        </div>
-      
-    
-    </>
   );
   return (
     <div className="auth-container">
@@ -546,27 +375,7 @@ const Signup = ({ onLogin }) => {
         )}
   
         <form onSubmit={handleSubmit} className="auth-form" encType="multipart/form-data">
-          <div className="form-group">
-            <label>I am a</label>
-            <div className="role-selection">
-              {['tutor', 'institution'].map(role => (
-                <label key={role} className="role-option">
-                  <input
-                    type="radio"
-                    name="role"
-                    value={role}
-                    checked={formData.role === role}
-                    onChange={handleChange}
-                    disabled={loading}
-                  />
-                  <span>{role.charAt(0).toUpperCase() + role.slice(1)}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-         
-          {formData.role === 'tutor' && renderTutorFields()}
-          {formData.role === 'institution' && renderInstitutionFields()}
+          {renderTutorFields()}
           {renderCommonFields()}
           <button 
             type="submit" 

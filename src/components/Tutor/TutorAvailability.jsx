@@ -18,7 +18,7 @@ const TutorAvailability = () => {
   oneYearFromNow.setFullYear(oneYearFromNow.getFullYear() + 1);
   const defaultEndDate = oneYearFromNow.toISOString().split('T')[0];
 
-  const [formData, setFormData] = useState(() => ({
+  const initialFormData = {
     daysOfWeek: ['Monday'],
     startTime: '09:00',
     endTime: '10:00',
@@ -26,9 +26,15 @@ const TutorAvailability = () => {
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     validFrom: today,
     validTo: defaultEndDate,
-    specificDate: ''
-  }));
+    specificDate: today,
+    maxBookingsPerSlot: 1
+  };
   
+  const [formData, setFormData] = useState(() => ({
+    ...initialFormData,
+    daysOfWeek: [...initialFormData.daysOfWeek] 
+  }));
+
   const [showDateRange, setShowDateRange] = useState(true);
   
   const allDays = [
@@ -41,14 +47,11 @@ const TutorAvailability = () => {
     { value: 'Sunday', label: 'Sun' }
   ];
 
-  // Using centralized getAuthToken from auth.js
-
   const fetchSlots = async () => {
     try {
       const token = getAuthToken();
       if (!token) {
         console.error('No authentication token found');
-        // Set loading to false to show the error state
         setLoading(false);
         return;
       }
@@ -83,223 +86,237 @@ const TutorAvailability = () => {
     }
   };
 
-  const handleChange = (e) => {
+  const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
     
-    if (name === 'daysOfWeek') {
-      const selectedOptions = Array.from(e.target.selectedOptions, option => option.value);
-      setFormData(prev => ({
-        ...prev,
-        daysOfWeek: selectedOptions
-      }));
-    } else if (name === 'isRecurring') {
-      const isRecurring = checked;
-      setFormData(prev => {
-        const newState = {
-          ...prev,
-          isRecurring,
-          specificDate: isRecurring ? '' : (prev.specificDate || today),
-          validFrom: isRecurring ? (prev.validFrom || today) : (prev.specificDate || today),
-          validTo: isRecurring ? (prev.validTo || defaultEndDate) : (prev.specificDate || today)
-        };
-        setShowDateRange(isRecurring);
-        return newState;
-      });
-    } else if (name === 'validFrom' || name === 'validTo') {
-      // Ensure validTo is not before validFrom
-      if (name === 'validFrom' && value > formData.validTo) {
+    try {
+      if (type === 'checkbox') {
+        if (name === 'isRecurring') {
+          toggleRecurring();
+          return;
+        } else if (name === 'daysOfWeek') {
+          // Handle days of week checkboxes
+          const dayValue = e.target.value;
+          setFormData(prev => {
+            const currentDays = Array.isArray(prev.daysOfWeek) ? [...prev.daysOfWeek] : [];
+            
+            if (checked) {
+              // Add the day if it's not already in the array
+              if (!currentDays.includes(dayValue)) {
+                return { ...prev, daysOfWeek: [...currentDays, dayValue] };
+              }
+            } else {
+              // Remove the day if it's in the array
+              return { 
+                ...prev, 
+                daysOfWeek: currentDays.filter(day => day !== dayValue) 
+              };
+            }
+            return prev;
+          });
+          return;
+        }
+        
+        // Handle other checkboxes
         setFormData(prev => ({
           ...prev,
-          [name]: value,
-          validTo: value
+          [name]: checked
+        }));
+      } else if (type === 'select-multiple') {
+        const selectedOptions = Array.from(e.target.selectedOptions, option => option.value);
+        setFormData(prev => ({
+          ...prev,
+          [name]: selectedOptions.length ? selectedOptions : ['Monday']
         }));
       } else {
+        if ((name === 'startTime' || name === 'endTime') && !value) {
+          return;
+        }
+        
         setFormData(prev => ({
           ...prev,
-          [name]: value || (name === 'validFrom' ? today : defaultEndDate)
+          [name]: value || ''
         }));
       }
-    } else if (name === 'specificDate') {
-      setFormData(prev => ({
-        ...prev,
-        specificDate: value || today,
-        validFrom: value || today,
-        validTo: value || today
-      }));
-    } else {
-      setFormData(prev => ({
-        ...prev,
-        [name]: type === 'checkbox' ? checked : (value || '')
-      }));
+    } catch (error) {
+      console.error('Error in handleInputChange:', error);
     }
+  };
+  const toggleRecurring = () => {
+    setFormData(prev => {
+      const newIsRecurring = !prev.isRecurring;
+      return {
+        ...prev,
+        isRecurring: newIsRecurring,
+        specificDate: newIsRecurring ? prev.specificDate : today,
+        validTo: newIsRecurring ? prev.validTo || defaultEndDate : today
+      };
+    });
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!formData.startTime || !formData.endTime) {
+      alert('Please select both start and end times');
+      return;
+    }
+  
+    const start = new Date(`2000-01-01T${formData.startTime}`);
+    const end = new Date(`2000-01-01T${formData.endTime}`);
+    
+    if (end <= start) {
+      alert('End time must be after start time');
+      return;
+    }
+    
     try {
-      const token = getAuthToken();
-      if (!token) {
-        console.error('No authentication token found');
-        return;
-      }
+      setLoading(true);
       
-      // Validate date range
-      if (new Date(formData.validFrom) > new Date(formData.validTo)) {
-        alert('End date cannot be before start date');
-        return;
-      }
+      const slotData = prepareSlotData();
       
-      // Validate specific date if not recurring
-      if (!formData.isRecurring && !formData.specificDate) {
-        alert('Please select a specific date for non-recurring slots');
-        return;
-      }
-      
-      const headers = { 
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      };
-      
-      const prepareSlotData = () => {
-        const baseData = {
-          startTime: formData.startTime,
-          endTime: formData.endTime,
-          isRecurring: formData.isRecurring,
-          timeZone: formData.timeZone,
-          validFrom: formData.validFrom,
-          validTo: formData.validTo
-        };
-        
-        if (formData.isRecurring) {
-          return formData.daysOfWeek.map(dayOfWeek => ({
-            ...baseData,
-            dayOfWeek,
-            specificDate: null // Ensure specificDate is null for recurring slots
-          }));
-        } else {
-          // For non-recurring, use the specific date
-          return [{
-            ...baseData,
-            dayOfWeek: new Date(formData.specificDate).toLocaleDateString('en-US', { weekday: 'long' }),
-            specificDate: formData.specificDate,
-            validFrom: formData.specificDate,
-            validTo: formData.specificDate
-          }];
-        }
-      };
-      
-      if (editingSlot && editingSlot.id) {
-        // For editing, we'll still only edit one slot at a time
-        const slotData = prepareSlotData()[0]; // Take first slot for editing
-        
-        // Ensure we're not sending null/undefined values
-        const cleanSlotData = Object.fromEntries(
-          Object.entries(slotData).filter(([_, v]) => v != null)
-        );
-        
-        console.log('Updating slot with data:', cleanSlotData);
-        
-        try {
-          const response = await axios.put(
-            `${API_BASE_URL}/api/availability/tutor/slots/${editingSlot.id}`,
-            cleanSlotData,
-            { 
-              headers,
-              validateStatus: (status) => status >= 200 && status < 500
+      if (editingSlot) {
+        const token = getAuthToken();
+        await axios.put(
+          `${API_BASE_URL}/api/availability/tutor/slots/${editingSlot.id}`, 
+          slotData[0],
+          {
+            headers: { 
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
             }
-          );
-          
-          if (response.status === 409) {
-            throw new Error(response.data?.message || 'This time slot conflicts with an existing one. Please choose a different time.');
-          } else if (response.status !== 200) {
-            throw new Error(response.data?.message || 'Failed to update slot');
           }
-        } catch (error) {
-          console.error('Update error details:', error.response?.data || error.message);
-          throw error;
-        }
-      } else {
-        // For new slots, create multiple slots - one for each selected day
-        const slots = prepareSlotData();
-        
-        // Clean each slot data
-        const cleanSlots = slots.map(slot => 
-          Object.fromEntries(
-            Object.entries(slot).filter(([_, v]) => v != null)
+        );
+        setSlots(prevSlots => 
+          prevSlots.map(slot => 
+            slot.id === editingSlot.id ? { ...slot, ...slotData[0] } : slot
           )
         );
-        
-        console.log('Creating slots with data:', cleanSlots);
-        
-        const response = await axios.post(
-          `${API_BASE_URL}/api/availability/tutor/slots/bulk`,
-          { slots: cleanSlots },
-          { 
-            headers,
-            validateStatus: (status) => status >= 200 && status < 500
+        setEditingSlot(null);
+      } else {
+        const token = getAuthToken();
+         const responses = [];
+        for (const slot of slotData) {
+          const response = await axios.post(
+            `${API_BASE_URL}/api/availability/tutor/slots`,
+            slot,
+            {
+              headers: { 
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+              }
+            }
+          );
+          // Extract the slot data from the response
+          if (response.data && response.data.slot) {
+            responses.push(response.data.slot);
+          } else {
+            responses.push(response.data);
           }
-        );
-        
-        if (response.status === 409) {
-          throw new Error(response.data?.message || 'One or more slots conflict with existing availability. Please check your selections.');
-        } else if (response.status !== 201) {
-          throw new Error(response.data?.message || 'Failed to create slots');
         }
+        // Update the slots with the new ones
+        setSlots(prevSlots => [...prevSlots, ...responses]);
       }
       
       setShowForm(false);
-      const handleEdit = (slot) => {
-        setEditingSlot(slot);
-        setFormData(prev => ({
-          ...prev,
-          daysOfWeek: slot.dayOfWeek ? [slot.dayOfWeek] : ['Monday'],
-          startTime: slot.startTime || '09:00',
-          endTime: slot.endTime || '10:00',
-          isRecurring: slot.isRecurring !== undefined ? slot.isRecurring : true,
-          maxBookingsPerSlot: slot.maxBookingsPerSlot || 1,
-          timeZone: slot.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone,
-          validFrom: slot.validFrom || today,
-          validTo: slot.validTo || defaultEndDate,
-          specificDate: slot.specificDate || ''
-        }));
-        setShowForm(true);
-      };
-      setEditingSlot(null);
-      fetchSlots();
-      setFormData(prev => ({
-        ...prev,
-        daysOfWeek: ['Monday'],
-        startTime: '09:00',
-        endTime: '10:00',
-        isRecurring: true,
-        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        validFrom: today,
-        validTo: defaultEndDate,
-        specificDate: ''
-      }));
-      setShowDateRange(true);
+      setFormData(initialFormData);
     } catch (error) {
       console.error('Error saving availability:', error);
-      // Show error message to user
-      alert(error.response?.data?.message || error.message || 'An error occurred while saving availability. Please try again.');
+      
+      if (error.response) {
+        // The request was made and the server responded with a status code
+        // that falls out of the range of 2xx
+        if (error.response.status === 409) {
+          alert('This time slot conflicts with an existing one. Please choose a different time or day.');
+        } else if (error.response.data && error.response.data.message) {
+          alert(`Error: ${error.response.data.message}`);
+        } else {
+          alert('Failed to save availability. The selected time slot may be taken or invalid.');
+        }
+      } else if (error.request) {
+        // The request was made but no response was received
+        alert('No response from server. Please check your connection and try again.');
+      } else {
+        // Something happened in setting up the request that triggered an Error
+        alert(`Error: ${error.message}`);
+      }
+    } finally {
+      setLoading(false);
     }
+  };
+
+  const prepareSlotData = () => {
+    const startTime = formData.startTime || '09:00';
+    const endTime = formData.endTime || '10:00';
+    
+    const startTime24 = typeof startTime === 'string' && startTime.includes(' ') 
+      ? convertTo24Hour(startTime) 
+      : startTime;
+      
+    const endTime24 = typeof endTime === 'string' && endTime.includes(' ')
+      ? convertTo24Hour(endTime)
+      : endTime;
+    if (!formData.isRecurring) {
+      const localDate = new Date(formData.specificDate || formData.validFrom || today);
+      const dateString = localDate.toISOString().split('T')[0];
+      return [{
+        dayOfWeek: localDate.toLocaleDateString('en-US', { weekday: 'long' }),
+        startTime: startTime24,
+        endTime: endTime24,
+        isRecurring: false,
+        specificDate: dateString,
+        validFrom: dateString,
+        validTo: dateString,
+        maxBookingsPerSlot: formData.maxBookingsPerSlot || 1
+      }];
+    }
+    
+    return formData.daysOfWeek.map(dayOfWeek => ({
+      dayOfWeek,
+      startTime: startTime24,
+      endTime: endTime24,
+      isRecurring: true,
+      specificDate: null,
+      validFrom: formData.validFrom || today,
+      validTo: formData.validTo || defaultEndDate,
+      maxBookingsPerSlot: formData.maxBookingsPerSlot || 1
+    }));
+  };
+
+  const convertTo24Hour = (time12h) => {
+    if (!time12h) return '00:00';
+    
+    if (!time12h.includes('AM') && !time12h.includes('PM')) {
+      return time12h;
+    }
+    
+    const [time, modifier] = time12h.split(' ');
+    let [hours, minutes] = time.split(':');
+    
+    if (hours === '12') {
+      hours = '00';
+    }
+    
+    if (modifier === 'PM') {
+      hours = parseInt(hours, 10) + 12;
+    }
+    
+    return `${hours.padStart(2, '0')}:${minutes || '00'}`;
   };
 
   const handleDeleteClick = async (slot) => {
     if (!slot?.id) {
       console.error('Cannot delete: slot or slot.id is undefined');
+    return;
+  }
+  
+  try {
+    const token = getAuthToken();
+    if (!token) {
+      console.error('No authentication token found');
       return;
     }
     
     try {
-      const token = getAuthToken();
-      if (!token) {
-        console.error('No authentication token found');
-        return;
-      }
-      
-      // Fetch booking details for this slot
       const response = await axios.get(
         `${API_BASE_URL}/api/availability/slots/${slot.id}/bookings`,
         {
@@ -315,49 +332,84 @@ const TutorAvailability = () => {
       setShowDeleteModal(true);
       
     } catch (error) {
-      console.error('Error fetching slot bookings:', error.response?.data || error.message);
-      // If there's an error, just show the delete confirmation
-      setSlotToDelete(slot);
-      setShowDeleteModal(true);
-    }
-  };
-
-  const confirmDeleteSlot = async () => {
-    if (!slotToDelete?.id) return;
-    
-    try {
-      const token = getAuthToken();
-      if (!token) {
-        console.error('No authentication token found');
-        return;
-      }
-      
-      await axios.delete(
-        `${API_BASE_URL}/api/availability/tutor/slots/${slotToDelete.id}`, 
-        {
-          headers: { 
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-          }
+      if (error.response?.status === 404) {
+        try {
+          await axios.delete(
+            `${API_BASE_URL}/api/availability/tutor/slots/${slot.id}`,
+            {
+              headers: { 
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+              }
+            }
+          );
+        
+          await fetchSlots();
+          alert('Time slot deleted successfully');
+          
+        } catch (deleteError) {
+          console.error('Error deleting slot:', deleteError);
+          const errorMessage = deleteError.response?.data?.message || 
+                             'Failed to delete time slot. Please try again.';
+          alert(errorMessage);
         }
-      );
-      
-      await fetchSlots();
-      setShowDeleteModal(false);
-      setSlotToDelete(null);
-      setSlotBookings([]);
-      
-    } catch (error) {
-      console.error('Error deleting slot:', error.response?.data || error.message);
-      const errorMessage = error.response?.data?.message || 'Failed to delete time slot. Please try again.';
-      alert(errorMessage);
-      setShowDeleteModal(false);
+      } else {
+        console.error('Error fetching slot bookings:', error);
+        setSlotBookings([]);
+        setSlotToDelete(slot);
+        setShowDeleteModal(true);
+      }
     }
-  };
-  // Format date for display
+    
+  } catch (error) {
+    console.error('Error in handleDeleteClick:', error);
+    setSlotToDelete(slot);
+    setShowDeleteModal(true);
+  }
+};
+
+const confirmDeleteSlot = async () => {
+  if (!slotToDelete?.id) {
+    console.error('No slot selected for deletion');
+    return;
+  }
+
+  try {
+    const token = getAuthToken();
+    if (!token) {
+      console.error('No authentication token found');
+      alert('Please log in to continue');
+      return;
+    }
+
+    await axios.delete(
+      `${API_BASE_URL}/api/availability/tutor/slots/${slotToDelete.id}`,
+      {
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        }
+      }
+    );
+    await fetchSlots();
+    alert('Time slot deleted successfully');
+
+  } catch (error) {
+    console.error('Error deleting slot:', error);
+    const errorMessage = error.response?.data?.message || 
+                       'Failed to delete time slot. It may have active bookings.';
+    alert(errorMessage);
+  } finally {
+    setShowDeleteModal(false);
+    setSlotToDelete(null);
+    setSlotBookings([]);
+  }
+};
+
   const formatDate = (dateString) => {
-    if (!dateString) return 'N/A';
+    if (!dateString) return '';
     const options = { 
       year: 'numeric', 
       month: 'short', 
@@ -365,7 +417,7 @@ const TutorAvailability = () => {
       hour: '2-digit',
       minute: '2-digit'
     };
-    return new Date(dateString).toLocaleDateString(undefined, options);
+    return new Date(dateString).toLocaleString('en-US', options);
   };
 
   const toggleStatus = async (slotId, currentStatus) => {
@@ -384,8 +436,6 @@ const TutorAvailability = () => {
 
       const newStatus = !currentStatus;
       console.log('Setting new status to:', newStatus);
-
-      // Optimistically update the UI
       setSlots(prevSlots => 
         prevSlots.map(slot => 
           slot.id === slotId ? { ...slot, isActive: newStatus } : slot
@@ -408,7 +458,7 @@ const TutorAvailability = () => {
       
     } catch (error) {
       console.error('Error toggling status:', error.response?.data || error.message);
-      // Revert the UI if the API call fails
+     
       setSlots(prevSlots => 
         prevSlots.map(slot => 
           slot.id === slotId ? { ...slot, isActive: currentStatus } : slot
@@ -417,22 +467,62 @@ const TutorAvailability = () => {
       alert('Failed to update slot status. Please try again.');
     }
 };
+
+  const convertTo24HourForInput = (timeStr) => {
+    if (!timeStr) return '';
+    
+    if (/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(timeStr)) {
+      return timeStr;
+    }
+    
+    if (typeof timeStr === 'string' && timeStr.includes(' ')) {
+      try {
+        const [time, modifier] = timeStr.split(' ');
+        let [hours, minutes] = time.split(':');
+        
+        if (modifier === 'PM' && hours !== '12') {
+          hours = parseInt(hours, 10) + 12;
+        } else if (modifier === 'AM' && hours === '12') {
+          hours = '00';
+        }
+        
+        return `${hours.toString().padStart(2, '0')}:${(minutes || '00').padStart(2, '0')}`;
+      } catch (error) {
+        console.error('Error converting time:', error);
+        return '09:00'; 
+      }
+    }
+    
+    return timeStr || '09:00';
+  };
+
   useEffect(() => {
     if (editingSlot) {
       console.log('Editing slot data:', editingSlot);
-      setFormData({
-        dayOfWeek: editingSlot.dayOfWeek || editingSlot.DayOfWeek,
-        startTime: editingSlot.startTime || editingSlot.StartTime,
-        endTime: editingSlot.endTime || editingSlot.EndTime,
+      const slotData = {
+        daysOfWeek: [editingSlot.dayOfWeek || editingSlot.DayOfWeek || 'Monday'],
+        startTime: convertTo24HourForInput(editingSlot.startTime || editingSlot.StartTime) || '09:00',
+        endTime: convertTo24HourForInput(editingSlot.endTime || editingSlot.EndTime) || '10:00',
         isRecurring: editingSlot.isRecurring ?? editingSlot.IsRecurring ?? true,
         timeZone: editingSlot.timeZone || editingSlot.TimeZone || Intl.DateTimeFormat().resolvedOptions().timeZone,
         validFrom: editingSlot.validFrom || editingSlot.ValidFrom || today,
         validTo: editingSlot.validTo || editingSlot.ValidTo || defaultEndDate,
-        specificDate: editingSlot.specificDate || editingSlot.SpecificDate || ''
-      });
-      setShowForm(true);
+        specificDate: editingSlot.specificDate || editingSlot.SpecificDate || today,
+        maxBookingsPerSlot: editingSlot.maxBookingsPerSlot || editingSlot.MaxBookingsPerSlot || 1
+      };
+      
+      console.log('Setting form data:', slotData);
+      
+      setFormData(slotData);
+      
+      const timer = setTimeout(() => {
+        setShowForm(true);
+      }, 0);
+      
+      return () => clearTimeout(timer);
     }
   }, [editingSlot]);
+
   useEffect(() => {
     fetchSlots();
   }, []);
@@ -441,7 +531,6 @@ const TutorAvailability = () => {
 
   return (
     <div className="tutor-availability">
-      {/* Delete Confirmation Modal */}
       {showDeleteModal && (
         <div className="modal-overlay">
           <div className="modal-content">
@@ -509,13 +598,7 @@ const TutorAvailability = () => {
           className={showForm ? 'active' : ''}
           data-view="add"
           onClick={() => {
-            setFormData({
-              daysOfWeek: ['Monday'],
-              startTime: '09:00',
-              endTime: '10:00',
-              isRecurring: true,
-              timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
-            });
+            setFormData(initialFormData);
             setEditingSlot(null);
             setShowForm(true);
           }}
@@ -531,29 +614,21 @@ const TutorAvailability = () => {
           <div className="form-group">
             <label>Days of Week</label>
             <div className="days-checkbox-container">
-              {allDays.map(day => (
-                <label key={day.value} className="day-checkbox-label">
-                  <input
-                    type="checkbox"
-                    name="daysOfWeek"
-                    value={day.value}
-                    checked={Array.isArray(formData.daysOfWeek) && formData.daysOfWeek.includes(day.value)}
-                    onChange={(e) => {
-                      const { checked, value } = e.target;
-                      setFormData(prev => {
-                        const currentDays = Array.isArray(prev.daysOfWeek) ? prev.daysOfWeek : [];
-                        return {
-                          ...prev,
-                          daysOfWeek: checked
-                            ? [...currentDays, value]
-                            : currentDays.filter(d => d !== value)
-                        };
-                      });
-                    }}
-                    className="day-checkbox"
-                  />
-                  <span className="day-label">{day.label}</span>
-                </label>
+              {allDays.map((day) => (
+                <div key={`day-${day.value}`} className="day-checkbox-wrapper">
+                  <label className="day-checkbox-label">
+                    <input
+                      type="checkbox"
+                      name="daysOfWeek"
+                      value={day.value}
+                      checked={Array.isArray(formData.daysOfWeek) && formData.daysOfWeek.includes(day.value)}
+                      onChange={handleInputChange}
+                      className="day-checkbox"
+                      id={`day-${day.value}`}
+                    />
+                    <span className="day-label">{day.label}</span>
+                  </label>
+                </div>
               ))}
             </div>
           </div>
@@ -563,9 +638,10 @@ const TutorAvailability = () => {
             <input
               type="time"
               name="startTime"
-              value={formData.startTime}
-              onChange={handleChange}
+              value={formData.startTime || '09:00'}
+              onChange={handleInputChange}
               required
+              className="form-control"
             />
           </div>
 
@@ -574,9 +650,10 @@ const TutorAvailability = () => {
             <input
               type="time"
               name="endTime"
-              value={formData.endTime}
-              onChange={handleChange}
+              value={formData.endTime || '10:00'}
+              onChange={handleInputChange}
               required
+              className="form-control"
             />
           </div>
 
@@ -586,31 +663,21 @@ const TutorAvailability = () => {
                 type="checkbox"
                 name="isRecurring"
                 checked={formData.isRecurring}
-                onChange={handleChange}
+                onChange={handleInputChange}
               />
-              Recurring Slot
+              Recurring Availability
             </label>
           </div>
-          
+
           {formData.isRecurring ? (
-            <div className="form-group date-range">
-              <label>Valid From:</label>
-              <input
-                type="date"
-                name="validFrom"
-                value={formData.validFrom}
-                min={today}
-                max={formData.validTo}
-                onChange={handleChange}
-                className="form-control"
-              />
+            <div className="form-group">
               <label>Valid To:</label>
               <input
                 type="date"
                 name="validTo"
-                value={formData.validTo}
+                value={formData.validTo || defaultEndDate}
                 min={formData.validFrom || today}
-                onChange={handleChange}
+                onChange={handleInputChange}
                 className="form-control"
               />
             </div>
@@ -622,7 +689,7 @@ const TutorAvailability = () => {
                 name="specificDate"
                 value={formData.specificDate}
                 min={today}
-                onChange={handleChange}
+                onChange={handleInputChange}
                 className="form-control"
                 required={!formData.isRecurring}
               />
@@ -650,61 +717,64 @@ const TutorAvailability = () => {
           {slots.length === 0 ? (
             <p key="no-slots" className="no-slots">Add your first Time slot!</p>
           ) : (
-            slots.map(slot => {
-              if (!slot.id) {
-                console.error('Invalid slot data:', slot);
-                return null; 
-              }
-              return (
-                <div key={`slot-${slot.id}`} className="slot-item">
-                  <div className="slot-details">
-                    <span className="day">{slot.dayOfWeek || 'N/A'}</span>
-                    <span className="time">
-                      {slot.startTime || '00:00'} - {slot.endTime || '00:00'}
-                    </span>
-                    <span className={`status ${slot.isActive ? 'active' : 'inactive'}`}>
-                      {slot.isActive ? 'Active' : 'Inactive'}
-                    </span>
-                  </div>
-                  <div className="slot-actions">
-                    <button 
-                      type="button"
-                      className="edit-btn"
-                      onClick={() => setEditingSlot(slot)}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      type="button"
-                      className="toggle-btn"
-                      onClick={() => toggleStatus(slot.id, slot.isActive)}
-                    >
-                      {slot.isActive ? 'Deactivate' : 'Activate'}
-                    </button>
-                    <button
-                      type="button"
-                      className="delete-btn"
-                      onClick={() => handleDeleteClick(slot)}
-                    >
-                      Delete
-                    </button>
-                  </div>
+            slots
+            .filter(slot => slot && slot.id) // Filter out any invalid slots
+            .map(slot => (
+              <div key={`slot-${slot.id}`} className="slot-item">
+                <div className="slot-details">
+                  <span className="day">{slot.dayOfWeek || 'N/A'}</span>
+                  <span className="time">
+                    {slot.startTime || '00:00'} - {slot.endTime || '00:00'}
+                  </span>
+                  <span className={`status ${slot.isActive ? 'active' : 'inactive'}`}>
+                    {slot.isActive ? 'Active' : 'Inactive'}
+                  </span>
                 </div>
-              );
-            })
+                <div className="slot-actions">
+                  <button 
+                    type="button"
+                    className="edit-btn"
+                    onClick={() => {
+                      setEditingSlot(slot);
+                      setShowForm(true);
+                    }}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    className="toggle-btn"
+                    onClick={() => toggleStatus(slot.id, slot.isActive)}
+                  >
+                    {slot.isActive ? 'Deactivate' : 'Activate'}
+                  </button>
+                  <button
+                    type="button"
+                    className="delete-btn"
+                    onClick={() => handleDeleteClick(slot)}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            ))
           )}
         </div>
       ) : (
         <div className="calendar-view">
           <p>Calendar view will be implemented here</p>
           <div className="slots-grid">
-            {slots.map(slot => (
-              <div 
-                key={slot.id} 
-                className="calendar-slot"
-                onClick={() => setEditingSlot(slot)}
-              >
-                <div className="slot-time">
+            {slots
+              .filter(slot => slot && slot.id) // Filter out any invalid slots
+              .map(slot => (
+                <div 
+                  key={`calendar-slot-${slot.id}`} 
+                  className="calendar-slot"
+                  onClick={() => {
+                    setEditingSlot(slot);
+                    setShowForm(true);
+                  }}>
+                  <div className="slot-time">
                   {slot.startTime} - {slot.endTime}
                 </div>
                 <div className="slot-day">{slot.dayOfWeek}</div>
@@ -716,5 +786,6 @@ const TutorAvailability = () => {
     </div>
   );
 };
+
 
 export default TutorAvailability;

@@ -10,6 +10,7 @@ import ProtectedRoute from './components/common/ProtectedRoute';
 import TutorPage from './components/Tutor/TutorPage';
 import TutorAvailability from './components/Tutor/TutorAvailability';
 import TutorBookings from './components/Tutor/TutorBookings';
+import AttendanceManager from './components/Tutor/AttendanceManager';
 import './styles/App.css';
 import './styles/Auth.css';
 import './styles/Dashboard.css';
@@ -146,6 +147,35 @@ function App() {
                 <Navigate to="/dashboard" replace /> : 
                 <LandingPage />
             } 
+          />
+          <Route
+            path="/tutor/attendance"
+            element={
+              <ProtectedRoute>
+                <AttendanceManager />
+              </ProtectedRoute>
+            }
+          />
+          {/* Catch-all route for undefined paths */}
+          <Route
+            path="/unauthorized"
+            element={
+              checkAuth() ? (
+                <Navigate to="/dashboard" replace />
+              ) : (
+                <Navigate to="/login" state={{ from: '/unauthorized' }} replace />
+              )
+            }
+          />
+          <Route
+            path="*"
+            element={
+              checkAuth() ? (
+                <Navigate to="/dashboard" replace />
+              ) : (
+                <Navigate to="/login" replace />
+              )
+            }
           />
         </Routes>
       </div>

@@ -15,7 +15,6 @@ const SubjectManagement = () => {
     category: '',
   });
 
-  // Fetch all subjects from the backend
   const fetchSubjects = async () => {
     try {
       setLoading(true);
@@ -32,7 +31,7 @@ const SubjectManagement = () => {
         }
       });
       
-      // Handle different response formats
+    
       const subjectsData = Array.isArray(response.data) 
         ? response.data 
         : response.data?.data || [];
@@ -253,21 +252,22 @@ const startEditing = (subject) => {
     );
   }
   
-  if (!loading && subjects.length === 0) {
-    return (
-      <div className="tutor-dashboard">
-        <div className="empty-state text-center py-5">
-          <p className="mb-4">No subjects found. Add your first subject to get started.</p>
-          <button 
-            className="btn btn-primary"
-            onClick={() => setIsAdding(true)}
-          >
-            Add First Subject
-          </button>
-        </div>
-      </div>
-    );
-  }
+  {!loading && subjects.length === 0 && (
+  <div className="empty-state text-center py-5">
+    <p className="mb-4">No subjects found. Add your first subject to get started.</p>
+    <button 
+      className="btn btn-primary"
+      onClick={() => {
+        console.log('Add First Subject button clicked');
+        setEditingSubject(null);
+        setFormData({ name: '', category: '' });
+        setIsAdding(true);
+      }}
+    >
+      <i className="fas fa-plus me-2"></i>Add First Subject
+    </button>
+  </div>
+)}
 
   return (
     <div className="subject-management">
