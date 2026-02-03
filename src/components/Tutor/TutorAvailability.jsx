@@ -95,18 +95,15 @@ const TutorAvailability = () => {
           toggleRecurring();
           return;
         } else if (name === 'daysOfWeek') {
-          // Handle days of week checkboxes
           const dayValue = e.target.value;
           setFormData(prev => {
             const currentDays = Array.isArray(prev.daysOfWeek) ? [...prev.daysOfWeek] : [];
             
             if (checked) {
-              // Add the day if it's not already in the array
               if (!currentDays.includes(dayValue)) {
                 return { ...prev, daysOfWeek: [...currentDays, dayValue] };
               }
             } else {
-              // Remove the day if it's in the array
               return { 
                 ...prev, 
                 daysOfWeek: currentDays.filter(day => day !== dayValue) 
@@ -206,14 +203,12 @@ const TutorAvailability = () => {
               }
             }
           );
-          // Extract the slot data from the response
           if (response.data && response.data.slot) {
             responses.push(response.data.slot);
           } else {
             responses.push(response.data);
           }
         }
-        // Update the slots with the new ones
         setSlots(prevSlots => [...prevSlots, ...responses]);
       }
       
@@ -223,8 +218,6 @@ const TutorAvailability = () => {
       console.error('Error saving availability:', error);
       
       if (error.response) {
-        // The request was made and the server responded with a status code
-        // that falls out of the range of 2xx
         if (error.response.status === 409) {
           alert('This time slot conflicts with an existing one. Please choose a different time or day.');
         } else if (error.response.data && error.response.data.message) {
@@ -233,10 +226,8 @@ const TutorAvailability = () => {
           alert('Failed to save availability. The selected time slot may be taken or invalid.');
         }
       } else if (error.request) {
-        // The request was made but no response was received
         alert('No response from server. Please check your connection and try again.');
       } else {
-        // Something happened in setting up the request that triggered an Error
         alert(`Error: ${error.message}`);
       }
     } finally {
@@ -264,8 +255,8 @@ const TutorAvailability = () => {
         endTime: endTime24,
         isRecurring: false,
         specificDate: dateString,
-        validFrom: dateString,
-        validTo: dateString,
+        validFrom: null,
+        validTo: null,
         maxBookingsPerSlot: formData.maxBookingsPerSlot || 1
       }];
     }

@@ -378,9 +378,9 @@ console.log('Escrow payments count:', escrowData?.length || 0);
                             <span className="tutor">{tx.tutor}</span>
                           </div>
                         </td>
-                        <td>${tx.amount.toFixed(2)}</td>
-                        <td>${tx.commission.toFixed(2)} (15%)</td>
-                        <td>${tx.tutorAmount.toFixed(2)}</td>
+                        <td>ETB {tx.amount.toFixed(2)}</td>
+                        <td>ETB {tx.commission.toFixed(2)} (15%)</td>
+                        <td>ETB {tx.tutorAmount.toFixed(2)}</td>
                         <td>
                           <span
                             className={`status-badge ${tx.status
@@ -423,19 +423,19 @@ console.log('Escrow payments count:', escrowData?.length || 0);
               <div className="table-footer">
                 <div className="table-summary">
                   <span>
-                    Total Amount: $
+                    Total Amount: ETB
                     {filteredTransactions
                       .reduce((sum, tx) => sum + tx.amount, 0)
                       .toFixed(2)}
                   </span>
                   <span>
-                    Total Commission: $
+                    Total Commission: ETB
                     {filteredTransactions
                       .reduce((sum, tx) => sum + tx.commission, 0)
                       .toFixed(2)}
                   </span>
                   <span>
-                    Total Payout: $
+                    Total Payout: ETB
                     {filteredTransactions
                       .reduce((sum, tx) => sum + tx.tutorAmount, 0)
                       .toFixed(2)}
@@ -476,9 +476,9 @@ console.log('Escrow payments count:', escrowData?.length || 0);
                       <h4>Booking #{bookingId}</h4>
                       <p>Student: {studentName}</p>
                       <p>Tutor: {tutorName}</p>
-                      <p>Amount: ${amount.toFixed(2)}</p>
-                      <p>Commission: ${commissionAmount.toFixed(2)}</p>
-                      <p>Tutor Gets: ${tutorAmount.toFixed(2)}</p>
+                      <p>Amount: ETB {amount.toFixed(2)}</p>
+                      <p>Commission: ETB {commissionAmount.toFixed(2)}</p>
+                      <p>Tutor Gets: ETB {tutorAmount.toFixed(2)}</p>
                       <p>
                         Status:{" "}
                         <span
@@ -517,12 +517,12 @@ console.log('Escrow payments count:', escrowData?.length || 0);
       {/* Stats Overview - 15% commission on completed payments */}
       <div className="stats-grid">
         <div className="stat-card">
-          <h4>Total Revenue</h4>
-          <p>${stats.totalRevenue.toFixed(2)}</p>
+              <h4>Total Revenue</h4>
+              <p>ETB {stats.totalRevenue.toFixed(2)}</p>
         </div>
         <div className="stat-card">
-          <h4>Commission (15%)</h4>
-          <p>${stats.commissionEarned.toFixed(2)}</p>
+              <h4>Commission (15%)</h4>
+              <p>ETB {stats.commissionEarned.toFixed(2)}</p>
         </div>
         <div className="stat-card">
           <h4>In Escrow</h4>
@@ -620,7 +620,7 @@ const RefundModal = ({
         <p className="modal-hint">Transaction: {transactionId}</p>
         <form onSubmit={handleSubmit}>
           <div className="form-group">
-            <label>Amount (max: {maxAmount?.toFixed(2)})</label>
+            <label>Amount (max: ETB {maxAmount?.toFixed(2)})</label>
             <input
               type="number"
               min="0.01"
